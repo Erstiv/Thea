@@ -1,0 +1,128 @@
+# Recyclarr Configuration — Project Thea
+# Syncs TRaSH Guide quality profiles into Sonarr/Radarr
+# Location on server: /opt/thea/configs/recyclarr/recyclarr.yml
+#
+# Recyclarr runs on a schedule inside its container.
+# Manual sync: docker exec recyclarr recyclarr sync
+
+# ─── RADARR (Movies) ────────────────────────────────────────
+radarr:
+  thea-radarr:
+    base_url: http://radarr:7878
+    api_key: !env_var RADARR_API_KEY   # Set after first Radarr boot
+
+    # Use the "Remux + WEB 720p/1080p" TRaSH profile but we'll
+    # customize it heavily toward small files
+    quality_definition:
+      type: movie
+
+    # Quality profiles — prefer small, compressed files
+    quality_profiles:
+      - name: "Thea Compact"
+        # Reset all scores to start clean
+        reset_unmatched_scores:
+          enabled: true
+        upgrade:
+          allowed: true
+          until_quality: Bluray-1080p
+          until_score: 5000
+        min_format_score: 0
+        quality_sort: top
+        qualities:
+          # 720p and 1080p treated as equal tier — x265 scoring decides
+          - name: Bluray-1080p
+          - name: Bluray-720p
+          - name: WEBRip-1080p
+          - name: WEBRip-720p
+          - name: WEBDL-1080p
+          - name: WEBDL-720p
+          - name: HDTV-1080p
+          - name: HDTV-720p
+
+    # Custom format scores — boost small/efficient, penalize bloat
+    custom_formats:
+      # Prefer x265/HEVC (much smaller files — 1080p x265 ≈ 1-2GB)
+      - trash_ids:
+          - dc98083c88e56bdaca7981e924e294eb  # x265 (HEVC)
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: 5000
+
+      # x264 is fine but bigger — slight penalty, not a dealbreaker
+      - trash_ids:
+          - 2899d84dc9372de3408e6d8cc18e9666  # x264
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -500
+
+      # Penalize remux (way too big)
+      - trash_ids:
+          - 3a3ff47579026e76d6504ebea39390de  # Remux Tier 01
+          - 9f98181fe5a3fbeb0cc29340da2a468a  # Remux Tier 02
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -10000
+
+      # Penalize BR-DISK (raw disc rips)
+      - trash_ids:
+          - ed38b889b31be83fda192888e2286d83  # BR-DISK
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -10000
+
+      # Penalize DV/HDR (usually paired with large files)
+      - trash_ids:
+          - e23edd2482476e595fb990b12e7c609c  # DV (WEBDL)
+          - 58d6a88f13e2db7f5059c41047876f00  # DV HDR10
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -5000
+
+# ─── SONARR (TV Shows) ──────────────────────────────────────
+sonarr:
+  thea-sonarr:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY   # Set after first Sonarr boot
+
+    quality_definition:
+      type: series
+
+    quality_profiles:
+      - name: "Thea Compact"
+        reset_unmatched_scores:
+          enabled: true
+        upgrade:
+          allowed: true
+          until_quality: Bluray-1080p
+          until_score: 5000
+        min_format_score: 0
+        quality_sort: top
+        qualities:
+          - name: Bluray-1080p
+          - name: Bluray-720p
+          - name: WEBRip-1080p
+          - name: WEBRip-720p
+          - name: WEBDL-1080p
+          - name: WEBDL-720p
+          - name: HDTV-1080p
+          - name: HDTV-720p
+
+    custom_formats:
+      - trash_ids:
+          - dc98083c88e56bdaca7981e924e294eb  # x265 (HEVC)
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: 5000
+
+      - trash_ids:
+          - 2899d84dc9372de3408e6d8cc18e9666  # x264
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -500
+
+      - trash_ids:
+          - 3a3ff47579026e76d6504ebea39390de  # Remux Tier 01
+          - 9f98181fe5a3fbeb0cc29340da2a468a  # Remux Tier 02
+        assign_scores_to:
+          - name: "Thea Compact"
+            score: -10000

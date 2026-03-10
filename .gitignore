@@ -1,0 +1,27 @@
+# Environment files (contain secrets)
+.env
+*.env
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Docker volumes (config data lives on server, not in repo)
+configs/prowlarr/
+configs/sonarr/
+configs/radarr/
+configs/lidarr/
+configs/bazarr/
+configs/sabnzbd/
+configs/qbittorrent/
+configs/overseerr/
+configs/notifiarr/
+configs/gluetun/
+
+# Keep recyclarr config (it's our custom setup)
+!configs/recyclarr.yml

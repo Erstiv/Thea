@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="data:application/json,{}">
+  <title>Snap & Grab</title>
+  <style>
+    :root {
+      --bg: #0a0a0f; --surface: #141422; --surface2: #1a1a2e; --surface3: #222240;
+      --accent: #e94560; --accent2: #0f3460; --accent-glow: rgba(233,69,96,0.3);
+      --text: #eee; --text-dim: #777; --text-mid: #aaa;
+      --success: #2ecc71; --warning: #f39c12; --info: #3498db;
+      --r: 16px; --r-sm: 10px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; overflow-x: hidden; }
+    .container { max-width: 480px; margin: 0 auto; padding: 12px 14px calc(80px + env(safe-area-inset-bottom)); }
+
+    /* ─── Header ─────────────────────────────── */
+    .header { text-align: center; padding: 16px 0 8px; }
+    .header h1 { font-size: 26px; font-weight: 800; background: linear-gradient(135deg, var(--accent), #ff6b6b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .header .sub { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+
+    /* ─── Top Bar (PIN + Room) ────────────────── */
+    .top-bar { display: flex; gap: 6px; margin-bottom: 12px; }
+    .top-bar input { flex: 1; background: var(--surface); border: 1px solid #333; border-radius: var(--r-sm); padding: 10px 12px; color: var(--text); font-size: 14px; outline: none; }
+    .top-bar input:focus { border-color: var(--accent); }
+    .badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 700; white-space: nowrap; align-self: center; }
+    .badge.admin { background: var(--success); color: #000; }
+    .badge.guest { background: var(--warning); color: #000; }
+
+    /* ─── Mode Tabs ──────────────────────────── */
+    .tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid #222; display: flex; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 100; }
+    .tab { flex: 1; text-align: center; padding: 6px 2px; font-size: 10px; color: var(--text-dim); cursor: pointer; border-radius: 8px; transition: all 0.15s; line-height: 1.2; }
+    .tab .icon { font-size: 20px; display: block; margin-bottom: 2px; }
+    .tab.active { color: var(--accent); background: var(--accent-glow); }
+
+    /* ─── Panels ─────────────────────────────── */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ─── Cards ──────────────────────────────── */
+    .card { background: var(--surface); border-radius: var(--r); padding: 16px; margin-bottom: 12px; }
+    .card-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .card-dim { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+
+    /* ─── Buttons ─────────────────────────────── */
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.15s; margin-bottom: 8px; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #ff6b6b); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid #333; }
+    .btn-success { background: linear-gradient(135deg, var(--success), #27ae60); color: #fff; }
+    .btn-info { background: linear-gradient(135deg, var(--info), #2980b9); color: #fff; }
+    .btn-sm { padding: 10px 16px; font-size: 14px; width: auto; display: inline-block; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; }
+
+    /* ─── Snap Button ────────────────────────── */
+    .snap-area { text-align: center; }
+
+    /* ─── Preview Image ──────────────────────── */
+    .preview { display: none; margin-bottom: 12px; }
+    .preview.visible { display: block; }
+    .preview img { width: 100%; border-radius: var(--r); max-height: 220px; object-fit: cover; }
+
+    /* ─── Loading ─────────────────────────────── */
+    .loading { display: none; text-align: center; padding: 30px; }
+    .loading.visible { display: block; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--surface2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading p { color: var(--text-dim); font-size: 13px; }
+
+    /* ─── Result Cards ───────────────────────── */
+    .result { display: none; }
+    .result.visible { display: block; }
+    .result-title { font-size: 20px; font-weight: 700; }
+    .confidence { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+    .confidence.high { background: var(--success); color: #000; }
+    .confidence.medium { background: var(--warning); color: #000; }
+    .confidence.low { background: var(--accent); color: #fff; }
+    .lib-status { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-radius: var(--r-sm); margin: 10px 0; font-size: 13px; font-weight: 600; }
+    .lib-status.yes { background: rgba(46,204,113,0.12); color: var(--success); }
+    .lib-status.no { background: rgba(233,69,96,0.12); color: var(--accent); }
+    .lib-status.mon { background: rgba(243,156,18,0.12); color: var(--warning); }
+    .reasoning { font-size: 12px; color: var(--text-dim); background: var(--surface2); padding: 10px; border-radius: var(--r-sm); margin: 8px 0; line-height: 1.5; }
+
+    /* ─── Filmography List ───────────────────── */
+    .filmography { list-style: none; margin: 8px 0; }
+    .filmography li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #222; font-size: 13px; }
+    .filmography .in-plex { color: var(--success); font-size: 11px; font-weight: 600; }
+    .filmography .not-plex { color: var(--text-dim); font-size: 11px; cursor: pointer; text-decoration: underline; }
+
+    /* ─── Trope / Analysis Cards ─────────────── */
+    .trope-card { background: var(--surface2); border-radius: var(--r-sm); padding: 12px; margin-bottom: 8px; }
+    .trope-name { font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .trope-desc { font-size: 12px; color: var(--text-mid); line-height: 1.5; }
+    .analysis-row { display: flex; gap: 4px; margin-bottom: 6px; }
+    .analysis-label { font-size: 11px; font-weight: 700; color: var(--accent); min-width: 80px; }
+    .analysis-value { font-size: 12px; color: var(--text-mid); line-height: 1.4; }
+
+    /* ─── Room / Multiplayer ─────────────────── */
+    .room-bar { background: var(--surface); border-radius: var(--r); padding: 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .room-code { font-size: 28px; font-weight: 800; letter-spacing: 4px; color: var(--accent); }
+    .room-players { font-size: 12px; color: var(--text-dim); }
+    .qr-img { display: block; margin: 12px auto; border-radius: var(--r-sm); }
+
+    /* ─── Choice List (What Happens Next) ────── */
+    .choices { list-style: none; margin: 12px 0; }
+    .choice { padding: 14px; background: var(--surface2); border: 2px solid transparent; border-radius: 12px; margin-bottom: 8px; cursor: pointer; font-size: 14px; transition: all 0.15s; }
+    .choice:active { transform: scale(0.98); }
+    .choice.selected { border-color: var(--accent); background: var(--accent-glow); }
+    .choice.correct { border-color: var(--success); background: rgba(46,204,113,0.15); }
+    .choice.wrong { border-color: #555; opacity: 0.5; }
+
+    /* ─── Bingo Grid ─────────────────────────── */
+    .bingo-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 12px 0; }
+    .bingo-cell { background: var(--surface2); border-radius: 6px; padding: 6px 4px; text-align: center; font-size: 9px; line-height: 1.3; cursor: pointer; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; transition: all 0.15s; word-break: break-word; border: 2px solid transparent; }
+    .bingo-cell.claimed { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+    .bingo-cell.free { background: var(--success); color: #000; font-weight: 700; border-color: var(--success); }
+
+    /* ─── Scoreboard ─────────────────────────── */
+    .scoreboard { margin: 12px 0; }
+    .score-row { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--surface2); border-radius: 8px; margin-bottom: 4px; font-size: 14px; }
+    .score-row:first-child { background: rgba(233,69,96,0.15); font-weight: 700; }
+    .score-pts { color: var(--accent); font-weight: 700; }
+
+    /* ─── Drinking Rules ─────────────────────── */
+    .rule { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--surface2); border-radius: var(--r-sm); margin-bottom: 6px; }
+    .rule-freq { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 12px; white-space: nowrap; }
+    .rule-freq.common { background: var(--success); color: #000; }
+    .rule-freq.moderate { background: var(--warning); color: #000; }
+    .rule-freq.rare { background: var(--accent); color: #fff; }
+    .rule-text { font-size: 13px; line-height: 1.4; }
+
+    /* ─── Rating ──────────────────────────────── */
+    .rating-slider { width: 100%; margin: 16px 0; accent-color: var(--accent); }
+    .rating-display { text-align: center; font-size: 48px; font-weight: 800; color: var(--accent); }
+
+    /* ─── Status Toast ────────────────────────── */
+    .toast { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 200; max-width: 90%; text-align: center; }
+    .toast.visible { display: block; animation: fadeInDown 0.3s; }
+    .toast.success { background: var(--success); color: #000; }
+    .toast.error { background: var(--accent); color: #fff; }
+    .toast.info { background: var(--info); color: #fff; }
+    @keyframes fadeInDown { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>Snap & Grab</h1>
+    <div class="sub">Identify &bull; Predict &bull; Play &bull; Download</div>
+  </div>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <input type="password" id="pin" placeholder="Admin PIN" maxlength="10" inputmode="numeric">
+    <span class="badge guest" id="pinBadge">Guest</span>
+  </div>
+
+  <!-- ═══ PANELS ═══ -->
+
+  <!-- 1. IDENTIFY -->
+  <div class="panel active" id="p-identify">
+    <div class="card">
+      <div class="card-title">What Am I Watching?</div>
+      <div class="card-dim">Snap a photo of any screen, poster, or DVD cover</div>
+    </div>
+    <div class="snap-area">
+      <button class="btn btn-primary" onclick="snap('identify')">Take a Photo</button>
+      <button class="btn btn-secondary" onclick="upload('identify')">Upload from Gallery</button>
+    </div>
+    <div class="preview" id="prev-identify"><img id="img-identify"></div>
+    <div class="loading" id="load-identify"><div class="spinner"></div><p>Identifying...</p></div>
+    <div class="result" id="res-identify"></div>
+  </div>
+
+  <!-- 2. WHO'S THAT -->
+  <div class="panel" id="p-whos-that">
+    <div class="card">
+      <div class="card-title">Who's That?</div>
+      <div class="card-dim">Snap an actor's face to see their filmography</div>
+    </div>
+    <div class="snap-area">
+      <button class="btn btn-primary" onclick="snap('whos-that')">Take a Photo</button>
+      <button class="btn btn-secondary" onclick="upload('whos-that')">Upload from Gallery</button>
+    </div>
+    <div class="preview" id="prev-whos-that"><img id="img-whos-that"></div>
+    <div class="loading" id="load-whos-that"><div class="spinner"></div><p>Recognizing face...</p></div>
+    <div class="result" id="res-whos-that"></div>
+  </div>
+
+  <!-- 3. TROPES -->
+  <div class="panel" id="p-tropes">
+    <div class="card">
+      <div class="card-title">Trope Spotter</div>
+      <div class="card-dim">Spot the trope, cliche, or technique in a scene</div>
+    </div>
+    <div class="snap-area">
+      <button class="btn btn-primary" onclick="snap('tropes')">Take a Photo</button>
+      <button class="btn btn-secondary" onclick="upload('tropes')">Upload from Gallery</button>
+    </div>
+    <div class="preview" id="prev-tropes"><img id="img-tropes"></div>
+    <div class="loading" id="load-tropes"><div class="spinner"></div><p>Analyzing scene...</p></div>
+    <div class="result" id="res-tropes"></div>
+  </div>
+
+  <!-- 4. DIRECTOR'S EYE -->
+  <div class="panel" id="p-eye">
+    <div class="card">
+      <div class="card-title">Director's Eye</div>
+      <div class="card-dim">Cinematography, lighting, and composition analysis</div>
+    </div>
+    <div class="snap-area">
+      <button class="btn btn-primary" onclick="snap('eye')">Take a Photo</button>
+      <button class="btn btn-secondary" onclick="upload('eye')">Upload from Gallery</button>
+    </div>
+    <div class="preview" id="prev-eye"><img id="img-eye"></div>
+    <div class="loading" id="load-eye"><div class="spinner"></div><p>Analyzing cinematography...</p></div>
+    <div class="result" id="res-eye"></div>
+  </div>
+
+  <!-- 5. PARTY (multiplayer hub) -->
+  <div class="panel" id="p-party">
+    <div class="card">
+      <div class="card-title">Party Mode</div>
+      <div class="card-dim">Multiplayer games for movie night</div>
+    </div>
+
+    <!-- No room yet -->
+    <div id="party-setup">
+      <input type="text" id="playerName" placeholder="Your name" class="top-bar" style="width:100%;margin-bottom:8px;background:var(--surface);border:1px solid #333;border-radius:var(--r-sm);padding:10px 12px;color:var(--text);font-size:14px;">
+      <button class="btn btn-primary" onclick="createRoom()">Create Room (Host)</button>
+      <div style="text-align:center;color:var(--text-dim);font-size:13px;margin:8px 0">or</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="joinCode" placeholder="Room code" maxlength="4" inputmode="numeric" style="flex:1;background:var(--surface);border:1px solid #333;border-radius:var(--r-sm);padding:10px 12px;color:var(--text);font-size:14px;">
+        <button class="btn btn-info btn-sm" onclick="joinRoom()">Join</button>
+      </div>
+    </div>
+
+    <!-- In a room -->
+    <div id="party-room" style="display:none">
+      <div class="room-bar">
+        <div>
+          <div class="room-code" id="roomCodeDisplay"></div>
+          <div class="room-players" id="roomPlayers"></div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="showQR()">QR</button>
+      </div>
+      <img class="qr-img" id="roomQR" style="display:none" width="200">
+
+      <!-- Movie context -->
+      <div class="card" style="margin-bottom:8px">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="movieInput" placeholder="What are we watching?" style="flex:1;background:var(--surface2);border:1px solid #333;border-radius:var(--r-sm);padding:8px 10px;color:var(--text);font-size:13px;">
+          <button class="btn btn-sm btn-info" onclick="setMovie()">Set</button>
+        </div>
+        <div id="currentMovie" style="font-size:12px;color:var(--text-dim);margin-top:4px"></div>
+      </div>
+
+      <!-- Game buttons (host only) -->
+      <div id="hostControls">
+        <button class="btn btn-primary" onclick="startWhatNext()">What Happens Next?</button>
+        <button class="btn btn-info" onclick="startBingo()">Movie Bingo</button>
+        <button class="btn btn-success" onclick="startRate()">Rate the Scene</button>
+        <button class="btn btn-secondary" onclick="startDrinking()">Drinking Game Rules</button>
+        <button class="btn btn-secondary" onclick="startPredictions()">Prediction Market</button>
+        <button class="btn btn-secondary" onclick="startSixDegrees()">Six Degrees</button>
+        <button class="btn btn-secondary" onclick="startQuote()">Quote Catcher</button>
+      </div>
+
+      <!-- Game area (dynamic content) -->
+      <div id="gameArea"></div>
+
+      <!-- Scoreboard -->
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">Scoreboard</div>
+        <div class="scoreboard" id="scoreboard"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('identify')"><span class="icon">&#127909;</span>Identify</div>
+  <div class="tab" onclick="switchTab('whos-that')"><span class="icon">&#129489;</span>Who's That</div>
+  <div class="tab" onclick="switchTab('tropes')"><span class="icon">&#127917;</span>Tropes</div>
+  <div class="tab" onclick="switchTab('eye')"><span class="icon">&#127916;</span>Eye</div>
+  <div class="tab" onclick="switchTab('party')"><span class="icon">&#127881;</span>Party</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden inputs -->
+<input type="file" id="cameraInput" accept="image/*" capture="environment">
+<input type="file" id="fileInput" accept="image/*">
+
+<script>
+// ═══ STATE ═══
+let ws = null, roomCode = null, isHost = false, currentMode = null;
+let captureCallback = null;
+
+// ═══ TABS ═══
+function switchTab(id) {
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("p-" + id).classList.add("active");
+  document.querySelectorAll(".tab")[["identify","whos-that","tropes","eye","party"].indexOf(id)].classList.add("active");
+}
+
+// ═══ SNAP / UPLOAD ═══
+function snap(mode) { currentMode = mode; document.getElementById("cameraInput").click(); }
+function upload(mode) { currentMode = mode; document.getElementById("fileInput").click(); }
+
+document.getElementById("cameraInput").addEventListener("change", handleCapture);
+document.getElementById("fileInput").addEventListener("change", handleCapture);
+
+function handleCapture(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const base64 = ev.target.result.split(",")[1];
+    const mime = file.type || "image/jpeg";
+    // Show preview
+    const prev = document.getElementById("prev-" + currentMode);
+    const img = document.getElementById("img-" + currentMode);
+    if (prev && img) { img.src = ev.target.result; prev.classList.add("visible"); }
+    // Route to handler
+    if (currentMode === "identify") doIdentify(base64, mime);
+    else if (currentMode === "whos-that") doWhosThat(base64, mime);
+    else if (currentMode === "tropes") doTropes(base64, mime);
+    else if (currentMode === "eye") doEye(base64, mime);
+    else if (captureCallback) { captureCallback(base64, mime); captureCallback = null; }
+  };
+  reader.readAsDataURL(file);
+  e.target.value = "";
+}
+
+function pin() { return document.getElementById("pin").value; }
+function showLoad(mode, v) { document.getElementById("load-" + mode).classList.toggle("visible", v); }
+function showRes(mode, html) { const el = document.getElementById("res-" + mode); el.innerHTML = html; el.classList.add("visible"); }
+function hideRes(mode) { document.getElementById("res-" + mode).classList.remove("visible"); }
+
+// ═══ TOAST ═══
+function toast(msg, type="info") {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.className = "toast visible " + type;
+  setTimeout(() => t.classList.remove("visible"), 3000);
+}
+
+// ═══ 1. IDENTIFY ═══
+async function doIdentify(b64, mime) {
+  showLoad("identify", true); hideRes("identify");
+  try {
+    const r = await (await fetch("/api/identify", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({imageData:b64,mimeType:mime,pin:pin()})
+    })).json();
+    showLoad("identify", false);
+    updatePin(r.isAdmin);
+    if (!r.identified) return showRes("identify", `<div class="card"><div class="card-dim">${r.reasoning||"Could not identify. Try a clearer photo."}</div></div>`);
+
+    const lib = r.inLibrary ? '<div class="lib-status yes">&#10003; In your Plex library</div>'
+      : r.alreadyMonitored ? '<div class="lib-status mon">&#9679; Already monitored</div>'
+      : '<div class="lib-status no">&#10007; Not in your library</div>';
+    const grabBtn = (!r.inLibrary && !r.alreadyMonitored) ? `<button class="btn btn-success" onclick="grabTitle('${esc(r.title)}',${r.year||"null"},'${r.type}')">Grab It</button>` : "";
+    const alts = r.alternates?.length ? `<div style="font-size:12px;color:var(--text-dim);margin-top:8px"><b>Could also be:</b> ${r.alternates.join(", ")}</div>` : "";
+
+    showRes("identify", `<div class="card">
+      <div class="result-title">${r.title} <span class="confidence ${r.confidence}">${r.confidence}</span></div>
+      <div style="color:var(--text-dim);font-size:13px;margin:4px 0">${r.type==="movie"?"Movie":"TV Show"} ${r.year?"("+r.year+")":""}</div>
+      ${lib}<div class="reasoning">${r.reasoning}</div>${alts}${grabBtn}
+    </div>`);
+  } catch(e) { showLoad("identify",false); toast(e.message,"error"); }
+}
+
+// ═══ 2. WHO'S THAT ═══
+async function doWhosThat(b64, mime) {
+  showLoad("whos-that", true); hideRes("whos-that");
+  try {
+    const r = await (await fetch("/api/whos-that", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({imageData:b64,mimeType:mime})
+    })).json();
+    showLoad("whos-that", false);
+    if (!r.identified) return showRes("whos-that", `<div class="card"><div class="card-dim">${r.reasoning||"Could not identify the actor."}</div></div>`);
+
+    const filmList = (r.filmography||[]).map(f =>
+      `<li><span>${f.title}</span>${f.inPlex ? '<span class="in-plex">IN PLEX</span>' : `<span class="not-plex" onclick="grabTitle('${esc(f.title.replace(/\\s*\\(\\d{4}\\)$/,""))}',null,'movie')">+ Grab</span>`}</li>`
+    ).join("");
+
+    showRes("whos-that", `<div class="card">
+      <div class="result-title">${r.name} <span class="confidence ${r.confidence}">${r.confidence}</span></div>
+      <div style="color:var(--text-dim);font-size:13px">Age: ${r.currentAge||"?"}</div>
+      <div class="reasoning">${r.funFact||""}</div>
+      <div class="card-title" style="margin-top:12px;font-size:14px">Filmography</div>
+      <ul class="filmography">${filmList}</ul>
+    </div>`);
+  } catch(e) { showLoad("whos-that",false); toast(e.message,"error"); }
+}
+
+// ═══ 3. TROPES ═══
+async function doTropes(b64, mime) {
+  showLoad("tropes", true); hideRes("tropes");
+  try {
+    const r = await (await fetch("/api/trope", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({imageData:b64,mimeType:mime,movieContext:document.getElementById("movieInput")?.value||""})
+    })).json();
+    showLoad("tropes", false);
+    const tropes = (r.tropes||[]).map(t => `<div class="trope-card">
+      <div class="trope-name">${t.name}</div>
+      <div class="trope-desc">${t.description}</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px"><b>Origin:</b> ${t.origin||"Unknown"}</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px"><b>Also seen in:</b> ${(t.otherExamples||[]).join(", ")}</div>
+    </div>`).join("");
+    showRes("tropes", `<div class="card">${tropes}
+      ${r.sceneAnalysis ? `<div class="reasoning" style="margin-top:8px">${r.sceneAnalysis}</div>` : ""}
+    </div>`);
+  } catch(e) { showLoad("tropes",false); toast(e.message,"error"); }
+}
+
+// ═══ 4. DIRECTOR'S EYE ═══
+async function doEye(b64, mime) {
+  showLoad("eye", true); hideRes("eye");
+  try {
+    const r = await (await fetch("/api/directors-eye", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({imageData:b64,mimeType:mime})
+    })).json();
+    showLoad("eye", false);
+    const rows = [
+      ["Shot", r.shotType], ["Lighting", r.lighting], ["Colors", r.colorPalette],
+      ["Composition", r.composition], ["Technique", r.technique], ["Mood", r.mood],
+      ["Signature Of", r.signature]
+    ].map(([l,v]) => v ? `<div class="analysis-row"><div class="analysis-label">${l}</div><div class="analysis-value">${v}</div></div>` : "").join("");
+    const similar = (r.similarScenes||[]).map(s => `<div style="font-size:11px;color:var(--text-dim)">${s}</div>`).join("");
+    showRes("eye", `<div class="card">${rows}${similar ? `<div style="margin-top:8px"><b style="font-size:11px;color:var(--accent)">Similar Scenes</b>${similar}</div>` : ""}</div>`);
+  } catch(e) { showLoad("eye",false); toast(e.message,"error"); }
+}
+
+// ═══ GRAB (download) ═══
+async function grabTitle(title, year, type) {
+  try {
+    const r = await (await fetch("/api/request", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({title,year,type,pin:pin()})
+    })).json();
+    toast(r.message, r.status==="added"?"success":"info");
+  } catch(e) { toast(e.message,"error"); }
+}
+
+// ═══ PIN ═══
+function updatePin(admin) {
+  const b = document.getElementById("pinBadge");
+  b.textContent = admin ? "Admin" : "Guest";
+  b.className = admin ? "badge admin" : "badge guest";
+}
+
+// ═══ ROOM / WEBSOCKET ═══
+function connectWS(code, name) {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}`);
+  ws.onopen = () => ws.send(JSON.stringify({type:"join",code,name}));
+  ws.onmessage = (e) => handleWSMsg(JSON.parse(e.data));
+  ws.onclose = () => { ws = null; toast("Disconnected","error"); };
+}
+
+function handleWSMsg(msg) {
+  if (msg.type === "joined") {
+    roomCode = msg.code;
+    document.getElementById("party-setup").style.display = "none";
+    document.getElementById("party-room").style.display = "block";
+    document.getElementById("roomCodeDisplay").textContent = msg.code;
+    updatePlayerList(msg.players);
+    if (msg.movie) { document.getElementById("movieInput").value = msg.movie; document.getElementById("currentMovie").textContent = "Watching: " + msg.movie; }
+    if (msg.drinkingRules?.length) renderDrinkingRules(msg.drinkingRules);
+  }
+  if (msg.type === "player_joined" || msg.type === "player_left") updatePlayerList(msg.players);
+  if (msg.type === "movie_set") { document.getElementById("currentMovie").textContent = "Watching: " + msg.movie; document.getElementById("movieInput").value = msg.movie; }
+
+  // What Happens Next
+  if (msg.type === "whn_question") renderWHNQuestion(msg);
+  if (msg.type === "whn_progress") document.getElementById("whnProgress") && (document.getElementById("whnProgress").textContent = `${msg.answered}/${msg.total} answered`);
+  if (msg.type === "whn_reveal") renderWHNReveal(msg);
+
+  // Bingo
+  if (msg.type === "bingo_card") renderBingoCard(msg.card);
+  if (msg.type === "bingo_winner") toast(msg.name + " got BINGO!", "success");
+  if (msg.type === "bingo_update") renderBingoCard(msg.card);
+
+  // Rate
+  if (msg.type === "rate_start") renderRatePrompt(msg.description);
+  if (msg.type === "rate_reveal") renderRateReveal(msg);
+
+  // Drinking
+  if (msg.type === "drinking_rules") renderDrinkingRules(msg.rules, msg.specialRule);
+
+  // Predictions
+  if (msg.type === "predictions_start") renderPredictions(msg.predictions);
+  if (msg.type === "predictions_reveal") renderPredictionResults(msg);
+
+  // Scoreboard
+  if (msg.scoreboard) renderScoreboard(msg.scoreboard);
+}
+
+function updatePlayerList(players) {
+  document.getElementById("roomPlayers").textContent = players.length + " player" + (players.length!==1?"s":"") + ": " + players.join(", ");
+}
+
+async function createRoom() {
+  const name = document.getElementById("playerName").value || "Host";
+  const r = await (await fetch("/api/room/create", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hostName:name})})).json();
+  isHost = true;
+  connectWS(r.code, name);
+}
+
+function joinRoom() {
+  const code = document.getElementById("joinCode").value;
+  const name = document.getElementById("playerName").value || "Player";
+  if (!code) return toast("Enter a room code","error");
+  isHost = false;
+  document.getElementById("hostControls").style.display = "none";
+  connectWS(code, name);
+}
+
+async function showQR() {
+  const img = document.getElementById("roomQR");
+  if (img.style.display !== "none") { img.style.display = "none"; return; }
+  const r = await (await fetch(`/api/room/${roomCode}/qr`)).json();
+  img.src = r.qr; img.style.display = "block";
+}
+
+function setMovie() {
+  const movie = document.getElementById("movieInput").value;
+  if (!movie || !roomCode) return;
+  fetch(`/api/room/${roomCode}/movie`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({movie})});
+  document.getElementById("currentMovie").textContent = "Watching: " + movie;
+}
+
+// ═══ GAME RENDERERS ═══
+const ga = () => document.getElementById("gameArea");
+
+// What Happens Next
+function startWhatNext() {
+  currentMode = "party-snap";
+  captureCallback = async (b64, mime) => {
+    ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>AI is analyzing the scene...</p></div>';
+    await fetch("/api/what-next/start", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageData:b64,mimeType:mime,roomCode,movieTitle:document.getElementById("movieInput").value})});
+  };
+  document.getElementById("cameraInput").click();
+}
+
+function renderWHNQuestion(msg) {
+  ga().innerHTML = `<div class="card">
+    <div class="card-title">What Happens Next?</div>
+    <div class="card-dim">${msg.sceneDescription||""}</div>
+    <div class="card-title" style="font-size:14px;margin-top:12px">${msg.question}</div>
+    <ul class="choices">${msg.choices.map((c,i) => `<li class="choice" onclick="pickChoice(this,${i})">${c}</li>`).join("")}</ul>
+    <div id="whnProgress" style="text-align:center;font-size:12px;color:var(--text-dim)">Waiting for answers...</div>
+    ${isHost ? '<button class="btn btn-primary" style="margin-top:8px" onclick="revealWHN()">Reveal Answer</button>' : ""}
+  </div>`;
+}
+
+function pickChoice(el, idx) {
+  el.parentElement.querySelectorAll(".choice").forEach(c => c.classList.remove("selected"));
+  el.classList.add("selected");
+  if (ws) ws.send(JSON.stringify({type:"whn_answer",choiceIdx:idx}));
+}
+
+async function revealWHN() {
+  await fetch("/api/what-next/reveal", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomCode})});
+}
+
+function renderWHNReveal(msg) {
+  const choices = ga().querySelectorAll(".choice");
+  choices.forEach((c,i) => { c.classList.remove("selected"); c.classList.add(i===msg.correctIdx?"correct":"wrong"); });
+  const resultHTML = msg.results.map(r => `<div style="font-size:13px;padding:4px 0">${r.name}: ${r.chose===-1?"didn't answer":r.correct?'<span style="color:var(--success)">Correct! +10</span>':'<span style="color:var(--text-dim)">Wrong</span>'}</div>`).join("");
+  ga().innerHTML += `<div class="card" style="margin-top:8px"><div class="card-title">Results</div><div class="reasoning">${msg.explanation}</div>${resultHTML}</div>`;
+  renderScoreboard(msg.scoreboard);
+}
+
+// Bingo
+async function startBingo() {
+  const movie = document.getElementById("movieInput").value;
+  ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>Generating bingo cards...</p></div>';
+  await fetch("/api/bingo/generate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomCode,movieTitle:movie,genre:""})});
+}
+
+function renderBingoCard(card) {
+  const cells = card.map((c,i) => `<div class="bingo-cell ${c.claimed?(c.text==="FREE SPACE"?"free":"claimed"):""}" onclick="claimBingo(${i})">${c.text}</div>`).join("");
+  ga().innerHTML = `<div class="card"><div class="card-title">Movie Bingo</div><div class="bingo-grid">${cells}</div></div>`;
+}
+
+function claimBingo(idx) {
+  if (ws) ws.send(JSON.stringify({type:"bingo_claim",idx}));
+}
+
+// Rate the Scene
+function startRate() {
+  const desc = prompt("What scene are we rating?") || "This scene";
+  fetch("/api/rate/start", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomCode,sceneDescription:desc})});
+}
+
+function renderRatePrompt(desc) {
+  ga().innerHTML = `<div class="card">
+    <div class="card-title">Rate the Scene</div>
+    <div class="card-dim">${desc}</div>
+    <div class="rating-display" id="ratingVal">5</div>
+    <input type="range" class="rating-slider" min="1" max="10" value="5" oninput="document.getElementById('ratingVal').textContent=this.value">
+    <button class="btn btn-primary" onclick="submitRating()">Submit Rating</button>
+  </div>`;
+}
+
+function submitRating() {
+  const val = parseInt(document.querySelector(".rating-slider")?.value || 5);
+  if (ws) ws.send(JSON.stringify({type:"rate_submit",rating:val}));
+  toast("Rating submitted!","success");
+}
+
+function renderRateReveal(msg) {
+  const bars = msg.ratings.map(r => `<div class="score-row"><span>${r.name}${r.name===msg.outlier?" (outlier!)":""}</span><span class="score-pts">${r.rating}/10</span></div>`).join("");
+  ga().innerHTML = `<div class="card"><div class="card-title">Scene Ratings: ${msg.description}</div>
+    <div class="rating-display">${msg.average}</div><div style="text-align:center;color:var(--text-dim);font-size:12px;margin-bottom:8px">average</div>${bars}</div>`;
+}
+
+// Drinking Game
+async function startDrinking() {
+  const movie = document.getElementById("movieInput").value;
+  const isAlcohol = confirm("Alcohol mode? (Cancel for snack mode)");
+  ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>Generating rules...</p></div>';
+  await fetch("/api/drinking-game/generate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomCode,movieTitle:movie,isAlcohol})});
+}
+
+function renderDrinkingRules(rules, special) {
+  const html = rules.map(r => `<div class="rule"><span class="rule-freq ${r.frequency}">${r.frequency}</span><span class="rule-text"><b>${r.trigger}</b> &mdash; ${r.action}</span></div>`).join("");
+  ga().innerHTML = `<div class="card"><div class="card-title">Drinking Game Rules</div>${html}${special?`<div style="margin-top:12px;padding:12px;background:var(--accent-glow);border-radius:var(--r-sm);font-size:13px;font-weight:700;text-align:center">${special}</div>`:""}</div>`;
+}
+
+// Predictions
+async function startPredictions() {
+  const movie = document.getElementById("movieInput").value;
+  ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>Generating predictions...</p></div>';
+  const r = await (await fetch("/api/predictions/generate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomCode,movieTitle:movie})})).json();
+}
+
+function renderPredictions(preds) {
+  const html = preds.map((p,i) => {
+    if (p.type === "yes_no") {
+      return `<div class="card" style="margin-bottom:6px"><div style="font-size:13px;margin-bottom:6px">${p.question} <span style="font-size:11px;color:var(--accent)">(${p.points}pts)</span></div>
+        <div class="btn-row"><button class="btn btn-sm btn-success" onclick="this.style.opacity=1;this.nextElementSibling.style.opacity=0.3" style="opacity:0.3">Yes</button><button class="btn btn-sm btn-secondary" onclick="this.style.opacity=1;this.previousElementSibling.style.opacity=0.3" style="opacity:0.3">No</button></div></div>`;
+    }
+    return `<div class="card" style="margin-bottom:6px"><div style="font-size:13px;margin-bottom:6px">${p.question} <span style="font-size:11px;color:var(--accent)">(${p.points}pts)</span></div>
+      <ul class="choices">${(p.options||[]).map((o,j) => `<li class="choice" onclick="this.parentElement.querySelectorAll('.choice').forEach(c=>c.classList.remove('selected'));this.classList.add('selected')">${o}</li>`).join("")}</ul></div>`;
+  }).join("");
+  ga().innerHTML = `<div class="card-title">Pre-Movie Predictions</div>${html}<button class="btn btn-primary" onclick="submitPredictions()">Lock In Predictions</button>`;
+}
+
+function submitPredictions() {
+  toast("Predictions locked in!", "success");
+  // Would collect all selections and send via WS
+  if (ws) ws.send(JSON.stringify({type:"prediction_submit",predictions:[]}));
+}
+
+function renderPredictionResults(msg) {
+  const html = msg.results.map(r => `<div class="score-row"><span>${r.name}</span><span class="score-pts">${r.correctCount} correct</span></div>`).join("");
+  ga().innerHTML = `<div class="card"><div class="card-title">Prediction Results</div>${html}</div>`;
+  renderScoreboard(msg.scoreboard);
+}
+
+// Six Degrees
+function startSixDegrees() {
+  const target = prompt("Target actor? (default: Kevin Bacon)") || "Kevin Bacon";
+  currentMode = "party-snap";
+  captureCallback = async (b64, mime) => {
+    ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>Tracing connections...</p></div>';
+    const r = await (await fetch("/api/six-degrees", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageData:b64,mimeType:mime,targetActor:target})})).json();
+    const chain = (r.chain||[]).map(c => `<div style="padding:8px 0;border-bottom:1px solid #222;font-size:13px"><b>${c.actor}</b> was in <i>${c.sharedWork}</i> with <b>${c.withActor}</b></div>`).join("");
+    ga().innerHTML = `<div class="card"><div class="card-title">${r.startActor||"?"} &#8594; ${r.targetActor||target}</div>
+      <div style="font-size:14px;color:var(--accent);font-weight:700;margin:8px 0">${r.degrees||"?"} degrees</div>${chain}
+      ${r.funFact?`<div class="reasoning" style="margin-top:8px">${r.funFact}</div>`:""}</div>`;
+  };
+  document.getElementById("cameraInput").click();
+}
+
+// Quote Catcher
+function startQuote() {
+  currentMode = "party-snap";
+  captureCallback = async (b64, mime) => {
+    ga().innerHTML = '<div class="loading visible"><div class="spinner"></div><p>Analyzing quote...</p></div>';
+    const r = await (await fetch("/api/quote", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({imageData:b64,mimeType:mime,movieContext:document.getElementById("movieInput").value})})).json();
+    if (!r.quoteFound) { ga().innerHTML = `<div class="card"><div class="card-dim">${r.reasoning||"No quote found"}</div></div>`; return; }
+    ga().innerHTML = `<div class="card">
+      <div style="font-size:20px;font-style:italic;margin-bottom:8px">"${r.quote}"</div>
+      <div style="font-size:13px;color:var(--text-dim)">— ${r.speaker||"Unknown"}, <i>${r.movie||""}</i></div>
+      ${r.isFamous?`<div style="margin-top:8px;font-size:14px;color:var(--accent);font-weight:700">Quotability: ${r.quotabilityScore}/10</div>`:""}
+      ${r.culturalImpact?`<div class="reasoning" style="margin-top:8px">${r.culturalImpact}</div>`:""}
+      ${r.similarQuotes?.length?`<div style="margin-top:8px;font-size:12px;color:var(--text-dim)"><b>Similar famous quotes:</b> ${r.similarQuotes.join(" | ")}</div>`:""}
+    </div>`;
+  };
+  document.getElementById("cameraInput").click();
+}
+
+// Scoreboard
+function renderScoreboard(scores) {
+  if (!scores?.length) return;
+  document.getElementById("scoreboard").innerHTML = scores.map(s => `<div class="score-row"><span>${s.name}</span><span class="score-pts">${s.score} pts</span></div>`).join("");
+}
+
+// ═══ HELPERS ═══
+function esc(s) { return s.replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+
+// ═══ AUTO-JOIN FROM URL ═══
+const urlParams = new URLSearchParams(location.search);
+if (urlParams.get("join")) {
+  switchTab("party");
+  document.getElementById("joinCode").value = urlParams.get("join");
+}
+</script>
+</body>
+</html>

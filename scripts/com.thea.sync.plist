@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Project Thea — macOS LaunchAgent for automated media sync
+
+  Install on your home Plex Mac:
+    1. Edit ProgramArguments path below to match where you put thea-sync.sh
+    2. Copy this file to ~/Library/LaunchAgents/
+    3. Load it:  launchctl load ~/Library/LaunchAgents/com.thea.sync.plist
+    4. Check:    launchctl list | grep thea
+
+  Unload:  launchctl unload ~/Library/LaunchAgents/com.thea.sync.plist
+  Logs:    cat /tmp/thea-sync.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.thea.sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- UPDATE THIS PATH to where you put thea-sync.sh -->
+        <string>/Users/elliot/scripts/thea-sync.sh</string>
+    </array>
+
+    <!-- Run every 30 minutes (1800 seconds) -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <!-- Also run once at load time -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/tmp/thea-sync-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/thea-sync-stderr.log</string>
+
+    <!-- Don't retry if it fails — just wait for next interval -->
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
