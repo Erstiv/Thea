@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0a0a0f; }
+::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a4e; }
+
+/* Smooth scroll for media rows */
+.media-row { scroll-behavior: smooth; scrollbar-width: none; }
+.media-row::-webkit-scrollbar { display: none; }
+
+/* Fade edges on horizontal scroll rows */
+.media-row-wrapper {
+  mask-image: linear-gradient(to right, transparent 0%, black 2%, black 98%, transparent 100%);
+}
+
+/* Hero gradient */
+.hero-gradient {
+  background: linear-gradient(to top, #0a0a0f 0%, transparent 60%);
+}
+
+/* Card hover glow */
+.media-card:hover {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
