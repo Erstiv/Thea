@@ -205,9 +205,9 @@ function formatEta(seconds) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// ── All requests (admin view) ───────────────────────────────
+// ── All requests (admin view) — enriched with live Radarr/Plex status ──
 
-router.get('/requests', (req, res) => {
+router.get('/requests', async (req, res) => {
   const requests = db.prepare(`
     SELECT r.*, u.display_name as user_name
     FROM requests r
@@ -215,7 +215,92 @@ router.get('/requests', (req, res) => {
     ORDER BY r.created_at DESC
     LIMIT 100
   `).all();
-  res.json(requests);
+
+  // Enrich each request with live download/library status
+  const radarrUrl = process.env.RADARR_URL || 'http://localhost:7878';
+  const radarrKey = process.env.RADARR_API_KEY;
+  const plexUrl = process.env.PLEX_SERVER_URL;
+  const plexToken = process.env.PLEX_TOKEN;
+
+  // Fetch Radarr queue once for all requests
+  let radarrQueue = [];
+  try {
+    const qr = await fetch(`${radarrUrl}/api/v3/queue?includeMovie=true&pageSize=200`, {
+      headers: { 'X-Api-Key': radarrKey },
+    });
+    if (qr.ok) {
+      const qdata = await qr.json();
+      radarrQueue = qdata.records || [];
+    }
+  } catch {}
+
+  const enriched = await Promise.all(requests.map(async (r) => {
+    const enrichment = { liveStatus: r.status, progress: null, quality: null, size: null, eta: null, inPlex: false, protocol: null };
+
+    if (r.media_type === 'tv') return { ...r, ...enrichment };
+
+    try {
+      // Check Radarr for this movie
+      const mr = await fetch(`${radarrUrl}/api/v3/movie?tmdbId=${r.tmdb_id}`, {
+        headers: { 'X-Api-Key': radarrKey },
+      });
+      if (mr.ok) {
+        const movies = await mr.json();
+        if (movies.length > 0) {
+          const movie = movies[0];
+          if (movie.hasFile) {
+            enrichment.liveStatus = 'downloaded';
+            enrichment.quality = movie.movieFile?.quality?.quality?.name;
+            enrichment.size = movie.movieFile?.size;
+          } else if (movie.monitored) {
+            // Check if it's in the download queue
+            const qi = radarrQueue.find(q => q.movie?.tmdbId === r.tmdb_id);
+            if (qi) {
+              enrichment.liveStatus = 'downloading';
+              enrichment.progress = qi.size > 0 ? Math.round(((qi.size - qi.sizeleft) / qi.size) * 100) : 0;
+              enrichment.quality = qi.quality?.quality?.name;
+              enrichment.size = qi.size;
+              enrichment.eta = qi.estimatedCompletionTime;
+              enrichment.protocol = qi.protocol;
+            } else {
+              enrichment.liveStatus = movie.status === 'inCinemas' ? 'in_cinemas' : 'searching';
+            }
+          } else {
+            enrichment.liveStatus = 'unmonitored';
+          }
+        }
+      }
+    } catch {}
+
+    // Check Plex
+    try {
+      if (plexUrl && plexToken) {
+        const pr = await fetch(`${plexUrl}/hubs/search?query=${encodeURIComponent(r.title)}&limit=5&X-Plex-Token=${plexToken}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (pr.ok) {
+          const pd = await pr.json();
+          for (const hub of pd.MediaContainer?.Hub || []) {
+            for (const item of hub.Metadata || []) {
+              if (item.title?.toLowerCase() === r.title?.toLowerCase()) {
+                enrichment.inPlex = true;
+                enrichment.plexRatingKey = item.ratingKey;
+                if (enrichment.liveStatus === 'downloaded') {
+                  enrichment.liveStatus = 'ready';
+                }
+                break;
+              }
+            }
+            if (enrichment.inPlex) break;
+          }
+        }
+      }
+    } catch {}
+
+    return { ...r, ...enrichment };
+  }));
+
+  res.json(enriched);
 });
 
 // ── Delete a request (admin) + remove from Radarr/Sonarr ────

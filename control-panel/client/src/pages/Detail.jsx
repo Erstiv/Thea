@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Plus, ExternalLink, Clock, Star, ArrowLeft, XCircle, Download, Loader } from 'lucide-react';
-import { getMovieDetail, getTvDetail, getPlexItem, requestMedia, getWatchUrl, getMediaStatus, cancelRequest } from '../lib/api.js';
+import { Play, Plus, ExternalLink, Clock, Star, ArrowLeft, XCircle, Download, Loader, Check, RefreshCw } from 'lucide-react';
+import { getMovieDetail, getTvDetail, getPlexItem, requestMedia, getWatchUrl, getMediaStatus, cancelRequest, regrabMovie } from '../lib/api.js';
 import { useAuth } from '../hooks/useAuth.jsx';
 import MediaRow from '../components/MediaRow.jsx';
 
@@ -12,6 +12,7 @@ export default function Detail({ type }) {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [regrabbing, setRegrabbing] = useState(false);
   const [mediaStatus, setMediaStatus] = useState(null);
 
   useEffect(() => {
@@ -82,6 +83,24 @@ export default function Detail({ type }) {
     }
   };
 
+  const handleRegrab = async () => {
+    if (!item || regrabbing) return;
+    if (!confirm(`Re-grab "${item.title}"?\n\nThis will delete the current (broken) file and search for a new download.`)) return;
+    setRegrabbing(true);
+    try {
+      await regrabMovie(item.tmdbId);
+      // Refresh status after a brief delay to let Radarr process
+      setTimeout(async () => {
+        const status = await getMediaStatus(item.tmdbId, item.type);
+        setMediaStatus(status);
+        setRegrabbing(false);
+      }, 2000);
+    } catch (err) {
+      alert(`Re-grab failed: ${err.message}`);
+      setRegrabbing(false);
+    }
+  };
+
   const handleWatch = async () => {
     // Use ratingKey from the item itself (Plex search results) or from the
     // Plex library cache lookup (TMDB discover results that are in Chaos/Luchagaido)
@@ -120,6 +139,8 @@ export default function Detail({ type }) {
   const isInPlex = mediaStatus?.inPlex;  // in Chaos/Luchagaido but not Radarr
   const canWatch = item?.inLibrary || isDownloaded || isInPlex;
   const canCancel = (isDownloading || isInRadarr) && user?.role === 'admin';
+  const isRequested = mediaStatus?.requested && !isDownloading && !isDownloaded && !isInPlex && !isInRadarr;
+  const canRegrab = canWatch && user?.role === 'admin';
 
   return (
     <div className="pb-12">
@@ -212,6 +233,10 @@ export default function Detail({ type }) {
                 <div className="flex items-center gap-2 bg-amber-400/20 text-amber-400 font-medium py-3 px-6 rounded-xl">
                   <Download className="w-5 h-5" /> Searching for release...
                 </div>
+              ) : isRequested ? (
+                <div className="flex items-center gap-2 bg-green-500/20 text-green-400 font-medium py-3 px-6 rounded-xl">
+                  <Check className="w-5 h-5" /> Requested{mediaStatus.requestStatus === 'pending_approval' ? ' — Awaiting Approval' : ''}
+                </div>
               ) : (
                 <button
                   onClick={handleRequest}
@@ -230,6 +255,17 @@ export default function Detail({ type }) {
                   className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium py-3 px-6 rounded-xl transition-colors disabled:opacity-50"
                 >
                   <XCircle className="w-5 h-5" /> {cancelling ? 'Cancelling...' : 'Cancel Request'}
+                </button>
+              )}
+
+              {/* Re-grab button (admin only, for broken downloads) */}
+              {canRegrab && (
+                <button
+                  onClick={handleRegrab}
+                  disabled={regrabbing}
+                  className="flex items-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 font-medium py-3 px-6 rounded-xl transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-5 h-5 ${regrabbing ? 'animate-spin' : ''}`} /> {regrabbing ? 'Re-grabbing...' : 'Re-grab'}
                 </button>
               )}
 

@@ -594,44 +594,101 @@ function QueueTab() {
       {requests.filter(r => r.status !== 'pending_approval').length > 0 && (
         <div className="mt-8">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <List className="w-5 h-5" /> Recent Requests
+            <List className="w-5 h-5" /> All Requests
           </h3>
           <div className="space-y-2">
-            {requests.filter(r => r.status !== 'pending_approval').map(req => (
-              <div key={req.id} className="flex items-center gap-3 bg-thea-card border border-thea-border rounded-xl px-4 py-3">
-                <div className="w-8 h-8 rounded-lg bg-thea-surface flex items-center justify-center flex-shrink-0">
-                  {req.media_type === 'tv' ? <Tv className="w-4 h-4 text-thea-muted" /> : <Film className="w-4 h-4 text-thea-muted" />}
+            {requests.filter(r => r.status !== 'pending_approval').map(req => {
+              const ls = req.liveStatus || req.status;
+              const statusStyles = {
+                ready: { bg: 'bg-green-400/10 border-green-400/20', pill: 'bg-green-400/10 text-green-400', label: 'Ready to Watch', icon: CheckCircle },
+                downloaded: { bg: 'bg-green-400/10 border-green-400/20', pill: 'bg-green-400/10 text-green-400', label: 'Downloaded', icon: CheckCircle },
+                downloading: { bg: 'bg-blue-400/10 border-blue-400/20', pill: 'bg-blue-400/10 text-blue-400', label: 'Downloading', icon: Download },
+                searching: { bg: 'bg-amber-400/10 border-amber-400/20', pill: 'bg-amber-400/10 text-amber-400', label: 'Searching', icon: Search },
+                in_cinemas: { bg: 'bg-purple-400/10 border-purple-400/20', pill: 'bg-purple-400/10 text-purple-400', label: 'In Cinemas', icon: Monitor },
+                approved: { bg: 'bg-blue-400/5 border-thea-border', pill: 'bg-blue-400/10 text-blue-400', label: 'Approved', icon: CheckCircle },
+                rejected: { bg: 'bg-red-400/5 border-thea-border', pill: 'bg-red-400/10 text-red-400', label: 'Rejected', icon: XCircle },
+                cancelled: { bg: 'bg-red-400/5 border-thea-border', pill: 'bg-red-400/10 text-red-400', label: 'Cancelled', icon: XCircle },
+                unmonitored: { bg: 'bg-thea-card border-thea-border', pill: 'bg-thea-surface text-thea-muted', label: 'Unmonitored', icon: EyeOff },
+                pending: { bg: 'bg-amber-400/5 border-thea-border', pill: 'bg-amber-400/10 text-amber-400', label: 'Pending', icon: AlertTriangle },
+              };
+              const style = statusStyles[ls] || statusStyles.pending;
+              const StatusIcon = style.icon;
+
+              return (
+                <div key={req.id} className={`rounded-xl border px-4 py-3 ${style.bg}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-thea-surface flex items-center justify-center flex-shrink-0">
+                      {req.media_type === 'tv' ? <Tv className="w-4 h-4 text-thea-muted" /> : <Film className="w-4 h-4 text-thea-muted" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{req.title}</p>
+                      <div className="flex items-center gap-2 text-xs text-thea-muted mt-0.5">
+                        <span>{req.user_name || 'Unknown'}</span>
+                        <span>&middot;</span>
+                        <span>{new Date(req.created_at).toLocaleDateString()}</span>
+                        {req.quality && <>
+                          <span>&middot;</span>
+                          <span>{req.quality}</span>
+                        </>}
+                        {req.size && <>
+                          <span>&middot;</span>
+                          <span>{formatBytes(req.size)}</span>
+                        </>}
+                        {req.protocol && <>
+                          <span>&middot;</span>
+                          <span className={`px-1 py-0.5 rounded ${
+                            req.protocol === 'usenet' ? 'bg-blue-400/10 text-blue-400' : 'bg-amber-400/10 text-amber-400'
+                          }`}>{req.protocol}</span>
+                        </>}
+                      </div>
+                    </div>
+
+                    {/* Status pill */}
+                    <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${style.pill}`}>
+                      <StatusIcon className="w-3.5 h-3.5" /> {style.label}
+                    </span>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {(ls === 'ready' || req.inPlex) && req.plexRatingKey && (
+                        <button
+                          onClick={() => window.open(`https://app.plex.tv/desktop#!/server/details?key=%2Flibrary%2Fmetadata%2F${req.plexRatingKey}`, '_blank')}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-green-400/10 text-green-400 hover:bg-green-400/20 font-medium"
+                        >
+                          <Play className="w-3 h-3" /> Watch
+                        </button>
+                      )}
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Delete request for "${req.title}"?\n\nThis will also remove it from Radarr/Sonarr if it hasn't downloaded yet.`)) return;
+                          try {
+                            await deleteRequest(req.id);
+                            setRequests(requests.filter(r => r.id !== req.id));
+                            showMsg(`Deleted request: ${req.title}`);
+                          } catch (err) { showMsg(`Failed: ${err.message}`); }
+                        }}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg text-thea-muted hover:text-red-400 hover:bg-red-400/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Download progress bar */}
+                  {ls === 'downloading' && req.progress != null && (
+                    <div className="mt-2 ml-11">
+                      <div className="w-full bg-thea-border rounded-full h-2">
+                        <div className="bg-blue-400 h-2 rounded-full transition-all" style={{ width: `${req.progress}%` }} />
+                      </div>
+                      <div className="flex justify-between mt-1 text-xs text-thea-muted">
+                        <span>{req.progress}%</span>
+                        {req.eta && <span>ETA: {new Date(req.eta).toLocaleTimeString()}</span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{req.title}</p>
-                  <p className="text-xs text-thea-muted">
-                    {req.user_name || 'Unknown'} &middot; {new Date(req.created_at).toLocaleDateString()} &middot; TMDB {req.tmdb_id}
-                  </p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  req.status === 'approved' ? 'bg-blue-400/10 text-blue-400' :
-                  req.status === 'available' ? 'bg-green-400/10 text-green-400' :
-                  req.status === 'rejected' ? 'bg-red-400/10 text-red-400' :
-                  req.status === 'cancelled' ? 'bg-red-400/10 text-red-400' :
-                  'bg-amber-400/10 text-amber-400'
-                }`}>
-                  {req.status}
-                </span>
-                <button
-                  onClick={async () => {
-                    if (!confirm(`Delete request for "${req.title}"?\n\nThis will also remove it from Radarr/Sonarr if it hasn't downloaded yet.`)) return;
-                    try {
-                      await deleteRequest(req.id);
-                      setRequests(requests.filter(r => r.id !== req.id));
-                      showMsg(`Deleted request: ${req.title}`);
-                    } catch (err) { showMsg(`Failed: ${err.message}`); }
-                  }}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg text-thea-muted hover:text-red-400 hover:bg-red-400/10 flex-shrink-0"
-                >
-                  <Trash2 className="w-3 h-3" /> Delete
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

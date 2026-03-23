@@ -40,6 +40,8 @@ export const getMyRequests = () => apiFetch('/api/media/my-requests');
 export const getPersonDetail = (id) => apiFetch(`/api/media/person/${id}`);
 export const getMediaStatus = (tmdbId, mediaType) => apiFetch(`/api/media/status/${tmdbId}?mediaType=${mediaType}`);
 export const cancelRequest = (tmdbId) => apiFetch(`/api/media/cancel/${tmdbId}`, { method: 'DELETE' });
+export const regrabMovie = (tmdbId) => apiFetch(`/api/media/regrab/${tmdbId}`, { method: 'POST' });
+export const getDvdReleases = () => apiFetch('/api/media/dvd-releases');
 export const approveRequest = (id) => apiFetch(`/api/media/request/${id}/approve`, { method: 'POST' });
 export const rejectRequest = (id) => apiFetch(`/api/media/request/${id}/reject`, { method: 'POST' });
 

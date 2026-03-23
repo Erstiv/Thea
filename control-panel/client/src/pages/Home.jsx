@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Play, Plus, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getTrending, getRecentlyAdded, requestMedia } from '../lib/api.js';
+import { getTrending, getRecentlyAdded, getDvdReleases, requestMedia } from '../lib/api.js';
 import MediaRow from '../components/MediaRow.jsx';
 
 export default function Home() {
   const [trending, setTrending] = useState({ movies: [], tv: [] });
   const [recentlyAdded, setRecentlyAdded] = useState([]);
+  const [dvdReleases, setDvdReleases] = useState([]);
   const [hero, setHero] = useState(null);
   const [requesting, setRequesting] = useState(false);
 
@@ -21,6 +22,7 @@ export default function Home() {
     }).catch(() => {});
 
     getRecentlyAdded().then(setRecentlyAdded).catch(() => {});
+    getDvdReleases().then(setDvdReleases).catch(() => {});
   }, []);
 
   const handleRequest = async (item) => {
@@ -92,6 +94,9 @@ export default function Home() {
       {/* Content Rows */}
       <div className={hero ? '' : 'pt-24'}>
         <MediaRow title="Recently Added to Plex" items={recentlyAdded} onRequest={handleRequest} />
+        {dvdReleases.length > 0 && (
+          <MediaRow title="New DVD & Blu-ray Releases" items={dvdReleases.filter(r => r.tmdbId)} onRequest={handleRequest} />
+        )}
         <MediaRow title="Trending Movies" items={trending.movies} onRequest={handleRequest} />
         <MediaRow title="Trending TV Shows" items={trending.tv} onRequest={handleRequest} />
       </div>

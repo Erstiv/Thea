@@ -4,6 +4,23 @@ import db from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// ── Plex image proxy (BEFORE auth so posters load everywhere) ──
+router.get('/plex-image/*', async (req, res) => {
+  try {
+    const imagePath = '/' + req.params[0];
+    const plexUrl = process.env.PLEX_SERVER_URL;
+    const plexToken = process.env.PLEX_TOKEN;
+    if (!plexUrl || !plexToken) return res.status(500).end();
+    const r = await fetch(`${plexUrl}${imagePath}?X-Plex-Token=${plexToken}`);
+    if (!r.ok) return res.status(r.status).end();
+    res.set('Content-Type', r.headers.get('content-type') || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    const buffer = await r.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch { res.status(500).end(); }
+});
+
 router.use(requireAuth);
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
@@ -37,10 +54,28 @@ router.get('/trending', async (req, res) => {
       tmdbFetch('/trending/movie/week'),
       tmdbFetch('/trending/tv/week'),
     ]);
-    res.json({
-      movies: (movies.results || []).slice(0, 20).map(mapTMDBMovie),
-      tv: (tv.results || []).slice(0, 20).map(mapTMDBTv),
+
+    // Ensure Plex cache is built
+    if (!_plexMovieCache) await buildPlexCache();
+
+    const mappedMovies = (movies.results || []).slice(0, 20).map(m => {
+      const item = mapTMDBMovie(m);
+      if (_plexMovieCache?.has(item.tmdbId)) item.inLibrary = true;
+      // Also check if already requested/in Radarr
+      if (!item.inLibrary) {
+        const req = db.prepare(`SELECT id FROM requests WHERE tmdb_id = ? AND status NOT IN ('rejected', 'cancelled') LIMIT 1`).get(item.tmdbId);
+        if (req) item.inLibrary = true;
+      }
+      return item;
     });
+    const mappedTv = (tv.results || []).slice(0, 20).map(t => {
+      const item = mapTMDBTv(t);
+      const plexKey = `tmdb:${item.tmdbId}`;
+      if (_plexShowCache?.has(plexKey)) item.inLibrary = true;
+      return item;
+    });
+
+    res.json({ movies: mappedMovies, tv: mappedTv });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch trending' });
   }
@@ -110,8 +145,8 @@ router.get('/plex/:ratingKey', async (req, res) => {
       type: item.type === 'show' ? 'tv' : 'movie',
       ratingKey: item.ratingKey,
       overview: item.summary,
-      poster: item.thumb ? `${plexUrl}${item.thumb}?X-Plex-Token=${plexToken}` : null,
-      backdrop: item.art ? `${plexUrl}${item.art}?X-Plex-Token=${plexToken}` : null,
+      poster: item.thumb ? `/api/media/plex-image${item.thumb}` : null,
+      backdrop: item.art ? `/api/media/plex-image${item.art}` : null,
       rating: item.rating || 0,
       inLibrary: true,
     });
@@ -125,6 +160,14 @@ router.get('/plex/:ratingKey', async (req, res) => {
 router.post('/request', async (req, res) => {
   const { tmdbId, mediaType, title } = req.body;
   if (!tmdbId || !mediaType) return res.status(400).json({ error: 'tmdbId and mediaType required' });
+
+  // Check for duplicate request
+  const existing = db.prepare(
+    `SELECT id, status FROM requests WHERE tmdb_id = ? AND status NOT IN ('rejected', 'cancelled') ORDER BY created_at DESC LIMIT 1`
+  ).get(tmdbId);
+  if (existing) {
+    return res.json({ ok: true, status: existing.status, message: 'Already requested', duplicate: true });
+  }
 
   const isAdmin = req.user.role === 'admin';
 
@@ -237,16 +280,8 @@ router.get('/person/:personId', async (req, res) => {
   try {
     const person = await tmdbFetch(`/person/${req.params.personId}`, '&append_to_response=combined_credits');
 
-    // Get Plex library titles for "in library" checking
-    let libraryTitles = new Set();
-    try {
-      const plexUrl = process.env.PLEX_SERVER_URL;
-      const plexToken = process.env.PLEX_TOKEN;
-      if (plexUrl && plexToken) {
-        // We'll check against Plex for each title client-side or do a bulk check
-        // For now, just pass the filmography and let the client handle it
-      }
-    } catch {}
+    // Ensure Plex cache is built for library checking
+    if (!_plexMovieCache) await buildPlexCache();
 
     const credits = person.combined_credits || {};
 
@@ -261,26 +296,22 @@ router.get('/person/:personId', async (req, res) => {
       })
       .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
       .slice(0, 50)
-      .map(c => c.media_type === 'movie' ? {
-        tmdbId: c.id,
-        title: c.title,
-        year: c.release_date?.slice(0, 4),
-        type: 'movie',
-        poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
-        rating: c.vote_average,
-        character: c.character,
-        overview: c.overview,
-        inLibrary: false,
-      } : {
-        tmdbId: c.id,
-        title: c.name,
-        year: c.first_air_date?.slice(0, 4),
-        type: 'tv',
-        poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
-        rating: c.vote_average,
-        character: c.character,
-        overview: c.overview,
-        inLibrary: false,
+      .map(c => {
+        const isMovie = c.media_type === 'movie';
+        const tmdbId = c.id;
+        let inLibrary = false;
+        if (isMovie && _plexMovieCache?.has(tmdbId)) inLibrary = true;
+        if (!isMovie && _plexShowCache?.has(`tmdb:${tmdbId}`)) inLibrary = true;
+
+        return isMovie ? {
+          tmdbId, title: c.title, year: c.release_date?.slice(0, 4), type: 'movie',
+          poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
+          rating: c.vote_average, character: c.character, overview: c.overview, inLibrary,
+        } : {
+          tmdbId, title: c.name, year: c.first_air_date?.slice(0, 4), type: 'tv',
+          poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
+          rating: c.vote_average, character: c.character, overview: c.overview, inLibrary,
+        };
       });
 
     const crewCredits = (credits.crew || [])
@@ -293,16 +324,20 @@ router.get('/person/:personId', async (req, res) => {
       })
       .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
       .slice(0, 20)
-      .map(c => ({
-        tmdbId: c.id,
-        title: c.title || c.name,
-        year: (c.release_date || c.first_air_date)?.slice(0, 4),
-        type: c.media_type === 'tv' ? 'tv' : 'movie',
-        poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
-        rating: c.vote_average,
-        job: c.job,
-        inLibrary: false,
-      }));
+      .map(c => {
+        const isMovie = c.media_type !== 'tv';
+        const tmdbId = c.id;
+        let inLibrary = false;
+        if (isMovie && _plexMovieCache?.has(tmdbId)) inLibrary = true;
+        if (!isMovie && _plexShowCache?.has(`tmdb:${tmdbId}`)) inLibrary = true;
+
+        return {
+          tmdbId, title: c.title || c.name, year: (c.release_date || c.first_air_date)?.slice(0, 4),
+          type: c.media_type === 'tv' ? 'tv' : 'movie',
+          poster: c.poster_path ? `${TMDB_IMG}/w342${c.poster_path}` : null,
+          rating: c.vote_average, job: c.job, inLibrary,
+        };
+      });
 
     res.json({
       id: person.id,
@@ -328,7 +363,18 @@ router.get('/status/:tmdbId', async (req, res) => {
   const { mediaType } = req.query;
 
   try {
-    const result = { inRadarr: false, inSonarr: false, inPlex: false, status: null, queueItem: null };
+    const result = { inRadarr: false, inSonarr: false, inPlex: false, status: null, queueItem: null, requested: false };
+
+    // Check local DB for pending/approved requests (any user)
+    try {
+      const dbReq = db.prepare(
+        `SELECT status FROM requests WHERE tmdb_id = ? AND status IN ('pending_approval', 'approved', 'pending') ORDER BY created_at DESC LIMIT 1`
+      ).get(tmdbId);
+      if (dbReq) {
+        result.requested = true;
+        result.requestStatus = dbReq.status;
+      }
+    } catch {}
 
     if (mediaType !== 'tv') {
       // Check Radarr
@@ -475,13 +521,124 @@ router.delete('/cancel/:tmdbId', async (req, res) => {
   }
 });
 
-// ── User's request history ──────────────────────────────────
+// ── User's request history (enriched with live status) ──────
 
-router.get('/my-requests', (req, res) => {
+router.get('/my-requests', async (req, res) => {
   const requests = db.prepare(`
     SELECT * FROM requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
   `).all(req.user.id);
-  res.json(requests);
+
+  const radarrUrl = process.env.RADARR_URL || 'http://localhost:7878';
+  const radarrKey = process.env.RADARR_API_KEY;
+
+  // Fetch queue once
+  let radarrQueue = [];
+  try {
+    const qr = await fetch(`${radarrUrl}/api/v3/queue?includeMovie=true&pageSize=200`, {
+      headers: { 'X-Api-Key': radarrKey },
+    });
+    if (qr.ok) { const qd = await qr.json(); radarrQueue = qd.records || []; }
+  } catch {}
+
+  const enriched = await Promise.all(requests.map(async (r) => {
+    const e = { liveStatus: r.status, progress: null, quality: null };
+    if (r.media_type === 'tv') return { ...r, ...e };
+
+    try {
+      const mr = await fetch(`${radarrUrl}/api/v3/movie?tmdbId=${r.tmdb_id}`, {
+        headers: { 'X-Api-Key': radarrKey },
+      });
+      if (mr.ok) {
+        const movies = await mr.json();
+        if (movies.length > 0) {
+          const movie = movies[0];
+          if (movie.hasFile) {
+            e.liveStatus = 'downloaded';
+            e.quality = movie.movieFile?.quality?.quality?.name;
+          } else {
+            const qi = radarrQueue.find(q => q.movie?.tmdbId === r.tmdb_id);
+            if (qi) {
+              e.liveStatus = 'downloading';
+              e.progress = qi.size > 0 ? Math.round(((qi.size - qi.sizeleft) / qi.size) * 100) : 0;
+            } else if (movie.status === 'inCinemas') {
+              e.liveStatus = 'in_cinemas';
+            } else if (movie.monitored) {
+              e.liveStatus = 'searching';
+            }
+          }
+        }
+      }
+    } catch {}
+    return { ...r, ...e };
+  }));
+
+  res.json(enriched);
+});
+
+// ── Re-grab: delete bad file and re-search (admin only) ─────
+
+router.post('/regrab/:tmdbId', async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const tmdbId = parseInt(req.params.tmdbId);
+
+  try {
+    // 1. Find the movie in Radarr
+    const movieRes = await fetch(`${process.env.RADARR_URL}/api/v3/movie?tmdbId=${tmdbId}`, {
+      headers: { 'X-Api-Key': process.env.RADARR_API_KEY },
+    });
+    if (!movieRes.ok) throw new Error('Could not find movie in Radarr');
+    const movies = await movieRes.json();
+    if (movies.length === 0) throw new Error('Movie not in Radarr');
+    const movie = movies[0];
+
+    // 2. If there's a file, delete it via Radarr's moviefile endpoint
+    if (movie.movieFile?.id) {
+      const delRes = await fetch(
+        `${process.env.RADARR_URL}/api/v3/moviefile/${movie.movieFile.id}`,
+        { method: 'DELETE', headers: { 'X-Api-Key': process.env.RADARR_API_KEY } }
+      );
+      if (!delRes.ok) console.warn(`[Regrab] File delete returned ${delRes.status}`);
+    }
+
+    // 3. Remove any existing queue items (blocklist the bad release)
+    try {
+      const qr = await fetch(`${process.env.RADARR_URL}/api/v3/queue?includeMovie=true`, {
+        headers: { 'X-Api-Key': process.env.RADARR_API_KEY },
+      });
+      if (qr.ok) {
+        const qdata = await qr.json();
+        const queueItem = (qdata.records || []).find(r => r.movie?.tmdbId === tmdbId);
+        if (queueItem) {
+          await fetch(
+            `${process.env.RADARR_URL}/api/v3/queue/${queueItem.id}?removeFromClient=true&blocklist=true`,
+            { method: 'DELETE', headers: { 'X-Api-Key': process.env.RADARR_API_KEY } }
+          );
+        }
+      }
+    } catch {}
+
+    // 4. Ensure movie is monitored so Radarr will search
+    if (!movie.monitored) {
+      await fetch(`${process.env.RADARR_URL}/api/v3/movie/${movie.id}`, {
+        method: 'PUT',
+        headers: { 'X-Api-Key': process.env.RADARR_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...movie, monitored: true }),
+      });
+    }
+
+    // 5. Trigger a new search in Radarr
+    const searchRes = await fetch(`${process.env.RADARR_URL}/api/v3/command`, {
+      method: 'POST',
+      headers: { 'X-Api-Key': process.env.RADARR_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'MoviesSearch', movieIds: [movie.id] }),
+    });
+
+    console.log(`[Regrab] ${movie.title} — file deleted, search triggered`);
+    res.json({ ok: true, message: `Deleted bad file for "${movie.title}" and triggered re-search` });
+  } catch (err) {
+    console.error('[Regrab] Failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Batch request multiple movies ─────────────────────────
@@ -533,6 +690,216 @@ router.post('/request-batch', async (req, res) => {
 
   res.json({ ok: true, ...results, message: `Requested ${results.success}, skipped ${results.skipped} already requested, ${results.failed} failed` });
 });
+
+// ── DVD Releases — scrape dvdsreleasedates.com ──────────────
+
+let _dvdCache = null;
+let _dvdCacheTime = 0;
+const DVD_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+router.get('/dvd-releases', async (req, res) => {
+  try {
+    const releases = await getDvdReleases();
+    res.json(releases);
+  } catch (err) {
+    console.error('[DVD] Fetch failed:', err.message);
+    res.json([]);
+  }
+});
+
+async function getDvdReleases(force = false) {
+  const now = Date.now();
+  if (!force && _dvdCache && (now - _dvdCacheTime) < DVD_CACHE_TTL) return _dvdCache;
+
+  try {
+    // Fetch current month's releases page
+    const r = await fetch('https://www.dvdsreleasedates.com/');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+
+    // The HTML structure: date sections start with <td class='reldate ...'>
+    // containing "Tuesday March 3, 2026". Movie cells are <td class='dvdcell'>
+    // with <a style='color:#000;' href='/movies/ID/slug'>Title</a>
+    // and imdb ratings in nearby <a href='http://www.imdb.com/title/ttXXX/'>RATING</a>
+
+    const releases = [];
+
+    // Split by date header rows
+    const dateSections = html.split(/class='reldate[^']*'/);
+
+    for (let i = 1; i < dateSections.length; i++) {
+      const section = dateSections[i];
+
+      // Extract date: "Tuesday March 3, 2026" or ">Tuesday March 17, 2026<"
+      const dateMatch = section.match(/Tuesday\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/);
+      if (!dateMatch) continue;
+      const releaseDate = new Date(dateMatch[1]);
+
+      // Find all movies: <a style='color:#000;' href='/movies/ID/slug'>Title</a>
+      const movieRegex = new RegExp("style='color:#000;' href='/movies/(\\d+)/([^']+)'>([^<]+)</a>", "g");
+      let match;
+      while ((match = movieRegex.exec(section)) !== null) {
+        const title = match[3].trim();
+        // Skip if it looks like a format link (DVD, Blu-ray, 4K)
+        if (['DVD', 'Blu-ray', '4K'].includes(title)) continue;
+        // Skip TV seasons
+        if (/Season\s+\d|:\s*Season/i.test(title)) continue;
+
+        // Find IMDB rating near this movie
+        const nearbySlice = section.slice(Math.max(0, match.index - 200), match.index + 800);
+        const imdbMatch = nearbySlice.match(/imdb\.com\/title\/(tt\d+)\/[^>]*>([\d.]+)<\/a>/);
+
+        releases.push({
+          title,
+          dvdSiteId: match[1],
+          slug: match[2],
+          releaseDate: releaseDate.toISOString().slice(0, 10),
+          imdbId: imdbMatch?.[1] || null,
+          imdbRating: imdbMatch?.[2] ? parseFloat(imdbMatch[2]) : null,
+        });
+      }
+    }
+
+    // Deduplicate by dvdSiteId (more reliable than title)
+    const seen = new Set();
+    const unique = releases.filter(r => {
+      if (seen.has(r.dvdSiteId)) return false;
+      seen.add(r.dvdSiteId);
+      return true;
+    });
+
+    console.log(`[DVD] Parsed ${unique.length} releases from HTML`);
+
+    // Enrich with TMDB data (poster, tmdbId) — batch lookup
+    const enriched = [];
+    for (const rel of unique) {
+      try {
+        // Search TMDB by title
+        const searchData = await tmdbFetch('/search/movie', `&query=${encodeURIComponent(rel.title)}`);
+        const tmdbMovie = (searchData.results || [])[0];
+        if (tmdbMovie) {
+          enriched.push({
+            ...rel,
+            tmdbId: tmdbMovie.id,
+            poster: tmdbMovie.poster_path ? `${TMDB_IMG}/w342${tmdbMovie.poster_path}` : null,
+            backdrop: tmdbMovie.backdrop_path ? `${TMDB_IMG}/w1280${tmdbMovie.backdrop_path}` : null,
+            overview: tmdbMovie.overview,
+            rating: tmdbMovie.vote_average,
+            year: tmdbMovie.release_date?.slice(0, 4),
+            type: 'movie',
+            inLibrary: false,
+          });
+        }
+      } catch {}
+    }
+
+    // Check which ones are already in Plex or Radarr
+    if (_plexMovieCache) {
+      for (const item of enriched) {
+        if (item.tmdbId && _plexMovieCache.has(item.tmdbId)) {
+          item.inLibrary = true;
+        }
+      }
+    }
+
+    // Also check Radarr — if it's already being tracked (downloading, searching, etc.), mark as inLibrary
+    try {
+      const radarrUrl = process.env.RADARR_URL || 'http://localhost:7878';
+      const radarrKey = process.env.RADARR_API_KEY;
+      if (radarrKey) {
+        for (const item of enriched) {
+          if (item.tmdbId && !item.inLibrary) {
+            try {
+              const r = await fetch(`${radarrUrl}/api/v3/movie?tmdbId=${item.tmdbId}`, {
+                headers: { 'X-Api-Key': radarrKey },
+              });
+              if (r.ok) {
+                const movies = await r.json();
+                if (movies.length > 0 && movies[0].monitored) {
+                  item.inLibrary = true;
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+
+    // Also check local requests DB
+    for (const item of enriched) {
+      if (item.tmdbId && !item.inLibrary) {
+        const req = db.prepare(
+          `SELECT id FROM requests WHERE tmdb_id = ? AND status NOT IN ('rejected', 'cancelled') LIMIT 1`
+        ).get(item.tmdbId);
+        if (req) item.inLibrary = true;
+      }
+    }
+
+    _dvdCache = enriched;
+    _dvdCacheTime = Date.now();
+    console.log(`[DVD] Cached ${enriched.length} releases (${enriched.filter(r => r.inLibrary).length} already in Plex)`);
+    return enriched;
+  } catch (err) {
+    console.error('[DVD] Scrape failed:', err.message);
+    return _dvdCache || [];
+  }
+}
+
+// ── Auto-download new DVD releases (runs every 6 hours) ─────
+
+async function checkDvdAutoDownload() {
+  try {
+    const releases = await getDvdReleases(true);
+
+    // Grab all releases on the current month's page that aren't already in library/Radarr
+    const toGrab = releases.filter(r => {
+      if (!r.tmdbId || r.inLibrary) return false;
+      return true;
+    });
+
+    if (toGrab.length === 0) {
+      console.log('[DVD Auto] No new releases to grab this month');
+      return;
+    }
+
+    const grabbed = [];
+    for (const rel of toGrab) {
+      try {
+        // Check if already in Radarr
+        const checkRes = await fetch(`${process.env.RADARR_URL}/api/v3/movie?tmdbId=${rel.tmdbId}`, {
+          headers: { 'X-Api-Key': process.env.RADARR_API_KEY },
+        });
+        if (checkRes.ok) {
+          const existing = await checkRes.json();
+          if (existing.length > 0) continue; // Already tracked
+        }
+
+        // Add to Radarr via Overseerr (uses existing quality profile)
+        await sendToOverseerr(rel.tmdbId, 'movie', rel.title);
+        grabbed.push(rel.title);
+
+        // Also record in local DB
+        db.prepare(`
+          INSERT OR IGNORE INTO requests (user_id, tmdb_id, media_type, title, status)
+          VALUES (1, ?, 'movie', ?, 'approved')
+        `).run(rel.tmdbId, rel.title);
+      } catch (err) {
+        console.warn(`[DVD Auto] Failed to grab "${rel.title}": ${err.message}`);
+      }
+    }
+
+    if (grabbed.length > 0) {
+      console.log(`[DVD Auto] Grabbed ${grabbed.length} new releases: ${grabbed.join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[DVD Auto] Check failed:', err.message);
+  }
+}
+
+// Run DVD auto-download check every 6 hours
+setInterval(checkDvdAutoDownload, 6 * 60 * 60 * 1000);
+// Run once on startup after a delay (let Plex cache build first)
+setTimeout(checkDvdAutoDownload, 5 * 60 * 1000);
 
 // ── Plex library cache ───────────────────────────────────────
 // Builds a local map of tmdbId → { ratingKey, title } for all movies/shows
@@ -716,8 +1083,8 @@ async function searchPlex(query) {
           year: item.year,
           type: isMovie ? 'movie' : 'tv',
           ratingKey: item.ratingKey,
-          thumb: item.thumb ? `${plexUrl}${item.thumb}?X-Plex-Token=${plexToken}` : null,
-          poster: item.thumb ? `${plexUrl}${item.thumb}?X-Plex-Token=${plexToken}` : null,
+          thumb: item.thumb ? `/api/media/plex-image${item.thumb}` : null,
+          poster: item.thumb ? `/api/media/plex-image${item.thumb}` : null,
           summary: item.summary,
           rating: item.rating,
           inLibrary: true,
@@ -755,20 +1122,43 @@ async function getPlexRecentlyAdded() {
     if (!_plexMovieReverse) await buildPlexCache();
 
     return (data.MediaContainer?.Metadata || []).map(item => {
-      const isMovie = item.type !== 'show';
+      // Plex returns seasons and episodes in recently-added, not just movies/shows
+      // season: type='season', parentTitle=show name, grandparentTitle=undefined
+      // episode: type='episode', grandparentTitle=show name
+      // movie: type='movie'
+      // show: type='show'
+      let title = item.title;
+      let type = 'movie';
+
+      if (item.type === 'season') {
+        title = item.parentTitle || `${item.title}`;
+        type = 'tv';
+      } else if (item.type === 'episode') {
+        title = item.grandparentTitle || item.parentTitle || item.title;
+        type = 'tv';
+      } else if (item.type === 'show') {
+        type = 'tv';
+      }
+
       const rk = String(item.ratingKey);
+      const isMovie = type === 'movie';
       const tmdbId = isMovie
         ? (_plexMovieReverse?.get(rk) || null)
         : (_plexShowReverse?.get(rk) || null);
+
+      // Use proxy URLs so images load from anywhere
+      const thumb = item.thumb || (item.type === 'season' ? item.parentThumb : null) || (item.type === 'episode' ? item.grandparentThumb : null);
+      const art = item.art || (item.type === 'season' ? item.parentArt : null) || (item.type === 'episode' ? item.grandparentArt : null);
+
       return {
         tmdbId,
-        title: item.title,
+        title,
         year: item.year,
-        type: item.type === 'show' ? 'tv' : 'movie',
+        type,
         ratingKey: item.ratingKey,
-        thumb: item.thumb ? `${plexUrl}${item.thumb}?X-Plex-Token=${plexToken}` : null,
-        poster: item.thumb ? `${plexUrl}${item.thumb}?X-Plex-Token=${plexToken}` : null,
-        art: item.art ? `${plexUrl}${item.art}?X-Plex-Token=${plexToken}` : null,
+        thumb: thumb ? `/api/media/plex-image${thumb}` : null,
+        poster: thumb ? `/api/media/plex-image${thumb}` : null,
+        art: art ? `/api/media/plex-image${art}` : null,
         summary: item.summary,
         addedAt: new Date(item.addedAt * 1000).toISOString(),
         inLibrary: true,
