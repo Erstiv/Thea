@@ -1,0 +1,27 @@
+# Meadowes listener for filou (systemd user or system unit).
+# Install (as the user that has the claude CLI logged in):
+#   cp meadowes-listener.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now meadowes-listener
+# Logs: journalctl -u meadowes-listener -f
+
+[Unit]
+Description=Meadowes relay listener (agent: filou)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust user and path to wherever the Thea repo lives on filou
+User=root
+Environment=MEADOWES_AGENT=filou
+Environment=MEADOWES_INTERVAL=60
+# 0 = triage-only (safe default); 1 = run harmless exec tasks unattended
+Environment=MEADOWES_ALLOW_EXEC=0
+Environment=MEADOWES_LOG=/var/log/meadowes-listener.log
+ExecStart=/bin/bash /opt/thea/scripts/meadowes/meadowes-listener.sh
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

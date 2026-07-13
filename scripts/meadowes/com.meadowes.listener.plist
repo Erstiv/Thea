@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.meadowes.listener</string>
+
+  <!-- Adjust the path if the repo lives somewhere else on this Mac -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jers/Thea/scripts/meadowes/meadowes-listener.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MEADOWES_AGENT</key><string>plex</string>
+    <key>MEADOWES_INTERVAL</key><string>60</string>
+    <!-- 0 = triage-only (safe default). Set to 1 to let the listener run
+         harmless exec tasks unattended, per policy.md -->
+    <key>MEADOWES_ALLOW_EXEC</key><string>0</string>
+    <!-- launchd jobs get a minimal PATH; claude is usually in one of these -->
+    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>WorkingDirectory</key><string>/Users/jers</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+
+  <key>StandardOutPath</key><string>/Users/jers/Library/Logs/meadowes-listener.out</string>
+  <key>StandardErrorPath</key><string>/Users/jers/Library/Logs/meadowes-listener.err</string>
+</dict>
+</plist>
