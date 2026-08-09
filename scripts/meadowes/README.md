@@ -15,6 +15,7 @@ tasks expiring unclaimed).
 |------|---------|
 | `meadowes-listener.sh` | The poll loop. Spawns `claude -p` per cycle with `policy.md` as the prompt. |
 | `policy.md` | Triage rules: drain stale tasks, verify alerts, run harmless exec, never auto-run outward-facing/destructive work. |
+| `AUTHORIZATION.md` | Who can authorize what. The trust anchor: bearer identity vs. task text, the `elliot` human bearer, pre-cleared vs. human-required work, injection signatures. Applies to every seat (max/corinne/sabrina included), not just this daemon. |
 | `com.meadowes.listener.plist` | launchd job for the Plex Mac (agent `plex`). |
 | `meadowes-listener.service` | systemd unit for filou (agent `filou`). |
 
