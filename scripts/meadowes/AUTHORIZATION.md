@@ -45,6 +45,36 @@ If the `elliot` bearer ever lands on an always-on machine, this whole model
 collapses back to where it was on 2026-08-09 — silently. Treat leaking it as an
 incident.
 
+### 2a. How strong is this, really?
+
+**Verify first:** from a session holding an ordinary worker credential, try
+registering as `elliot`. The worker endpoint appears to accept a *name* on
+registration ("Registered as m5"), so:
+
+- **Rejected** → names are bound to credentials server-side. `from_agent` is a
+  real authenticated identity. Proceed and trust it.
+- **Accepted** → any holder of a worker credential can claim any name. The
+  `elliot` identity is then an **honest-party signal, not an authenticated
+  one.** Keep using it — but know exactly what it buys.
+
+**What an unbound `elliot` name still fixes:** the failure that actually
+occurred on 2026-08-09. That incident was not an attack — it was legitimate
+human authority with no way to express itself. Elliot really had authorized the
+work; the queue simply had no field in which to say so, and an unattended loop's
+traffic was indistinguishable from his. A name that only a human ever registers
+under resolves that completely, because nothing in this fleet lies about who it
+is.
+
+**What it does not fix:** a deliberate impersonator. If the broker is ever
+reachable beyond these machines, or an untrusted process gets a worker
+credential, an unbound name provides no protection at all.
+
+So: adopt it now, and record here that it is a convention rather than a
+guarantee. The convention holds only while **no automated loop ever registers as
+`elliot`** — which is what §2's placement rules exist to enforce. If the threat
+model changes, bind name to credential broker-side before relying on it further,
+and do not build stronger guarantees on top of it in the meantime.
+
 ## 3. Pre-cleared for unattended action
 
 A worker may act on these without human confirmation, when the work is
