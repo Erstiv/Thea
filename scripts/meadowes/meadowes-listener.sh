@@ -45,6 +45,11 @@ else
 fi
 
 POLICY="$(sed "s/{{AGENT}}/$AGENT/g" "$DIR/policy.md")
+
+--- AUTHORIZATION.md (trust anchor, included verbatim) ---
+
+$(cat "$DIR/AUTHORIZATION.md")
+
 $MODE_LINE"
 
 echo "$(date -u +%FT%TZ) meadowes-listener starting as agent '$AGENT' (interval ${INTERVAL}s, exec=$ALLOW_EXEC)" >> "$LOG"
