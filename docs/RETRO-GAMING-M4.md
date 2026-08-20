@@ -62,6 +62,7 @@ brew install --cask heroic        # native ARM launcher for GOG + Epic, no Steam
 brew install dosbox-x             # native arm64 DOS emulator — FORMULA, not cask
 brew install --cask amiberry      # native ARM64 Amiga emulator (JIT since v8.0)
 brew install innoextract          # unpack GOG Windows installers without Windows
+brew install icoutils             # lift game icons out of .exe files for launchers
 ```
 
 **DOSBox-X: take the formula, not the cask.** `--cask dosbox-x` resolves to
@@ -243,8 +244,12 @@ soundtracks. Plain downloads, no launcher, no DRM, and there's a
 `redownload.php` page that recovers your downloads by email. This is a
 developer selling you a zip file. It is exactly what you want.
 
-You already own these on Steam, so see "Getting Steam-purchased games out of
-Steam" below before you rebuy anything.
+**Check what you already own before buying anything.** In this case the Steam
+account turned out to hold only FTL, but Creeper World 1 had been bought direct
+from Knuckle Cracker back in 2010 — found by searching Gmail for the receipt,
+not by looking in any library. Knuckle Cracker's `redownload.php` recovers
+purchases years later; the original emailed download links expire after about
+two weeks and now return a store page instead of a file.
 
 ### Running it
 

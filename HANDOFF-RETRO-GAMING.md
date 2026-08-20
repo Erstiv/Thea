@@ -194,7 +194,50 @@ CPU; a stalled Wine or emulator process sits at 0.0%.
 Then run the `.exe` from inside the bottle. If FTL launches, the architecture is
 proven and everything after this is repetition.
 
-### 4. Creeper World
+### 3b. Launchers — ✅ built, FTL tested
+
+`scripts/retro/make-launcher.sh` builds a double-clickable `.app` in
+`~/Applications` for either a bottle game or a DOS game:
+
+```bash
+./scripts/retro/make-launcher.sh bottle "FTL" "/Volumes/SisuGames/Games/ftl/FTLGame.exe"
+./scripts/retro/make-launcher.sh dosbox "Populous II" "/Volumes/SisuGames/Games/populous2/app" POPULOUS.EXE
+```
+
+It checks the games drive is mounted and says so in a dialog rather than failing
+silently, and it lifts the game's own icon out of the Windows `.exe` via
+`icoutils` (added to the toolchain). `FTL.app` is built and verified — launches
+to ~90% CPU, and the missing-target path exits 1 with a visible alert.
+
+**Two traps worth remembering if you touch that generator:**
+
+- An applet's `do shell script "... &"` child is killed when the applet quits.
+  The game must be started with `nohup` from a script inside the bundle, not
+  from the AppleScript.
+- Do not embed paths in AppleScript string literals. A path with a space comes
+  back from `printf %q` as `My\ Drive`, and `\ ` is a syntax error in
+  AppleScript, not a space. The generated `launch.sh` holds the real command;
+  the applet just calls it.
+
+### 4. Creeper World — he already owns CW1, direct from the developer
+
+Not on Steam — that account has FTL and nothing else. Creeper World 1 was bought
+**direct from Knuckle Cracker on 3 Feb 2010**.
+Still installed at `/Applications/KnuckleCracker/Creeper World.app`, an Adobe
+AIR app, `ppc i386` — dead on Apple Silicon, unrunnable, keep it only as
+evidence. Save data from 2014 survives in
+`~/Library/Preferences/CreeperWorld/` (`gameData.dat`, `keyData.dat`).
+
+The 2010 FastSpring download links in the receipt are **dead** — they now return
+an 8 KB store page, as the email warned they would after two weeks. But
+`knucklecracker.com/creeperworld/redownload.php` is live (HTTP 200), and the
+receipt carries the licence key. Recover the Windows build there and put it in
+the bottle; only CW3/CW4 would need buying.
+
+⚠️ The licence key is in Elliot's Gmail, not in this repo, and must stay that
+way — this branch is public.
+
+
 
 Same SteamCMD route, or buy direct from `knucklecracker.com/common/buy.php`
 (DRM-free, no launcher, and the money reaches the solo developer). CW4 and IXE
