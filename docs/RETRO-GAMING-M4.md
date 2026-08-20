@@ -339,6 +339,50 @@ Everything except CrossOver goes on sale regularly; the GOG classics hit $1–2.
 
 ---
 
+---
+
+## Session handoff
+
+Written 20 August 2026 in a cloud session on branch
+`claude/retro-games-apple-silicon-m4-pf7ruw` (PR #6).
+
+**To pick this up again**, open the session "Playing Populous, SimCity, Creeper
+World, FTL on M4" from the Code tab or claude.ai/code, or pull the whole
+conversation into a terminal from a checkout of this repo:
+
+```bash
+claude --teleport session_01HeaGpc4KTtMj3S9Q6cdFCy
+```
+
+### Settled
+
+- The layered plan: one Windows bottle for Populous: The Beginning, SimCity 4,
+  Creeper World and FTL; DOSBox-X and Amiberry stay native for the DOS and
+  Amiga classics.
+- Every non-Steam purchase route above was verified against the stores'
+  own listings in August 2026.
+
+### Not verified — do this first
+
+- **Nothing in `scripts/retro/setup-mac-retro.sh` has run on real hardware.**
+  It was authored in a Linux container; only `bash -n` and the macOS/arch
+  guards were exercised. The Homebrew cask names (`dosbox-x`, `amiberry`,
+  `heroic`, `crossover`) came from search results, not from
+  `brew info`. Expect at least one to need correcting on first run.
+- No game has actually been installed or launched. The per-game steps are
+  researched, not tested.
+
+### Open threads
+
+- **CrossOver 27, early 2027** — goes Apple-Silicon-native and drops Rosetta.
+  If you are reading this near that date, re-check before buying a licence;
+  upgrade terms may matter.
+- **macOS 28, fall 2027** — general Rosetta 2 support ends. Anything still
+  depending on an Intel Mac build needs to have moved into the bottle by then.
+  Apple's carve-out for "older, unmaintained games" has no published list, so
+  do not assume a specific title is covered.
+- Prices in the cost table drift constantly; the GOG classics hit $1-2 on sale.
+
 ## Sources
 
 - [macOS Tahoe 26.4 Rosetta 2 warnings — MacRumors](https://www.macrumors.com/2026/02/16/macos-tahoe-26-4-rosetta-2-warnings/)
