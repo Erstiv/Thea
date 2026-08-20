@@ -59,10 +59,34 @@ Run `scripts/retro/setup-mac-retro.sh`, or do it by hand:
 
 brew install --cask crossover     # ~$74 one-time, 14-day trial. The paid pick.
 brew install --cask heroic        # native ARM launcher for GOG + Epic, no Steam
-brew install --cask dosbox-x      # native arm64 DOS emulator
+brew install dosbox-x             # native arm64 DOS emulator — FORMULA, not cask
 brew install --cask amiberry      # native ARM64 Amiga emulator (JIT since v8.0)
 brew install innoextract          # unpack GOG Windows installers without Windows
 ```
+
+**DOSBox-X: take the formula, not the cask.** `--cask dosbox-x` resolves to
+`dosbox-x-app`, which is ad-hoc signed — Gatekeeper refuses it with a
+*"Apple could not verify DOSBox-X ... Move to Trash"* dialog — and it puts no
+`dosbox-x` on your PATH, so none of the command lines below work. The formula is
+a properly signed arm64 bottle with the CLI. Verified on hardware 20 Aug 2026.
+
+**Then stop DOSBox-X hanging on first launch.** Out of the box it opens a modal
+folder-selection panel at startup (`macosx_prompt_folder` →
+`[NSSavePanel runModal]`). Launched from a terminal that panel never takes
+focus, so DOSBox-X sits at 0% CPU with no window and no error — it reads as a
+broken install. One-off fix:
+
+```bash
+dosbox-x -nopromptfolder -c "mount c ~/Games/dos" -c "c:"
+```
+
+Permanent fix — in `~/Library/Preferences/DOSBox-X <version> Preferences`:
+
+```
+working directory option  = noprompt
+```
+
+`setup-mac-retro.sh` sets this for you.
 
 **Free alternative to CrossOver:** Sikarugir (the Kegworks fork of Wineskin,
 renamed Oct 2025). It exposes D3DMetal / DXVK / DXMT backends directly and is
@@ -400,6 +424,54 @@ diskutil info /Volumes/YourDrive | grep -i "file system"
 
 Everything except SimCity 4 modding is bounded. Total lands around 8-10 GB.
 
+
+## Verified on hardware — 20 August 2026
+
+Everything above was researched in a cloud session with no machine. This section
+records what actually happened when the toolchain was installed on the MacBook
+Air (Apple Silicon, macOS 26.6).
+
+**Homebrew names — all four were right.** `dosbox-x`, `amiberry`, `heroic` and
+`innoextract` all resolve. The handoff flagged `amiberry` as the likely wrong
+one; it is correct, and installs 8.3.0.
+
+**Signing status, as installed:**
+
+| Package | Result |
+|---|---|
+| `amiberry` 8.3.0 (cask) | Notarized, Developer ID Dimitris Panokostas. Universal binary. |
+| `heroic` 2.22.1 (cask) | Notarized, Developer ID Flavio Lima. arm64. |
+| `innoextract` 1.9 (formula) | arm64, fine. |
+| `dosbox-x-app` (cask) | **Ad-hoc signed — Gatekeeper blocks it, and no CLI. Do not use.** |
+| `dosbox-x` 2026.08.02 (formula) | arm64 bottle, `dosbox-x` on PATH. **Use this one.** |
+
+**Two failures worth knowing about, both now handled by the script:**
+
+1. `check_games_volume` died on `local dir="$1" probe="$dir"`. Bash expands the
+   whole line before `local` runs, so `$dir` is still unset — under `set -u`
+   that is a fatal *unbound variable*. Split across separate `local` lines.
+2. The DOSBox-X startup folder panel described above. This one is nasty because
+   it produces no error at all: the process starts, blocks in AppKit, and never
+   draws. `sample <pid>` is what identifies it.
+
+**A same-name volume trap on this machine.** The boot volume is *also* named
+`Sisu`, so `/Volumes/Sisu` is whichever of the two mounted first and the loser
+appears as `/Volumes/Sisu 1` (currently a symlink to `/`). If the external is
+not mounted, `GAMES_DIR=/Volumes/Sisu/Games` silently creates directories on the
+21 GB internal disk. The script now refuses to run when `GAMES_DIR` is under
+`/Volumes` but resolves to the boot disk.
+
+**Confirming DOSBox-X really works without a screen:** have DOS write a file the
+host can see. It appears in about three seconds.
+
+```bash
+dosbox-x -c "mount c /Volumes/Sisu/Games/dos" -c "c:" -c "echo OK > PROOF.TXT"
+```
+
+**Still untested:** CrossOver, the bottle, and every game. No purchase has been
+made and nothing has been launched.
+
+---
 
 ## Session handoff
 

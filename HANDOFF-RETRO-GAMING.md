@@ -55,10 +55,53 @@ a **separate task**; see "Other open item" below.
 ## State
 
 **Done:** research, the guide (`docs/RETRO-GAMING-M4.md`), the installer
-(`scripts/retro/setup-mac-retro.sh`), PR #6 with three commits.
+(`scripts/retro/setup-mac-retro.sh`), PR #6.
 
-**Not done — everything real.** Nothing has been installed. No game has been
-bought, downloaded, or launched. The script has only ever been syntax-checked.
+**Runbook step 1 is complete — done on hardware 20 Aug 2026.** The toolchain is
+installed and the script has been run, debugged and re-run clean:
+
+- `dosbox-x` 2026.08.02 (formula), `amiberry` 8.3.0, `heroic` 2.22.1,
+  `innoextract` 1.9 — all arm64, all working.
+- Game tree created at `/Volumes/Sisu/Games`; Sisu confirmed APFS,
+  case-insensitive, 1.8 TB free.
+- DOSBox-X verified actually running DOS (it wrote a file to the host from
+  inside the emulator).
+- Three bugs found and fixed; see "What broke" below.
+
+**Still not done:** CrossOver (step 2 onward). No game has been bought,
+downloaded or launched.
+
+### What broke, and what changed because of it
+
+1. **`local dir="$1" probe="$dir"` → unbound variable.** Bash expands the whole
+   line before `local` runs, so `$dir` is unset when `probe` is assigned; under
+   `set -u` that is fatal. Split into separate `local` lines. This killed the
+   script on its first-ever run.
+2. **The `dosbox-x` cask is a trap.** `brew install --cask dosbox-x` installs
+   `dosbox-x-app`, which is ad-hoc signed — macOS puts up *"Apple could not
+   verify DOSBox-X … Move to Trash"* — and ships no `dosbox-x` on PATH, so every
+   command line in the guide fails. The script now installs the **formula**,
+   which is a signed arm64 bottle with the CLI. The broken cask was uninstalled.
+3. **DOSBox-X hangs on first launch with no window and no error.** It opens a
+   modal folder-selection panel at startup (`macosx_prompt_folder` →
+   `[NSSavePanel runModal]`); from a terminal the panel never takes focus, so
+   the process blocks in AppKit at 0% CPU forever. `sample <pid>` is what found
+   it. Fix is `working directory option = noprompt` in the DOSBox-X preferences,
+   which the script now sets. `-nopromptfolder` is the one-off equivalent.
+
+Corrections to the previous handoff: **all four Homebrew names were right**,
+including `amiberry`, which had been flagged as the likely wrong one. The
+volume-check function reported `/Volumes/Sisu is APFS` correctly once bug 1 was
+fixed.
+
+### ⚠️ The boot volume is also named "Sisu"
+
+`/Volumes/Sisu` is the external drive *right now*, and `/Volumes/Sisu 1` is a
+symlink to `/`. That is a race: whichever volume mounts first takes the plain
+name. With the external unmounted, `GAMES_DIR=/Volumes/Sisu/Games` would quietly
+create directories on the 21 GB internal disk. The script now refuses to run
+when `GAMES_DIR` is under `/Volumes` but resolves to the boot disk. Renaming one
+of the two volumes would be the real fix — Elliot's call.
 
 ---
 
@@ -66,7 +109,7 @@ bought, downloaded, or launched. The script has only ever been syntax-checked.
 
 Work through these in order. Stop and report at the first failure.
 
-### 1. Toolchain
+### 1. Toolchain — ✅ DONE 20 Aug 2026
 
 ```bash
 cd ~/Thea-repo && git pull
@@ -77,23 +120,9 @@ GAMES_DIR=/Volumes/Sisu/Games ./scripts/retro/setup-mac-retro.sh
 Installs DOSBox-X, Amiberry, Heroic, innoextract via Homebrew; creates the game
 tree on Sisu; prints next steps. Idempotent — safe to re-run.
 
-**Expect breakage here.** The four Homebrew names came from search results, not
-from `brew info`:
-
-| Name used | Confidence |
-|---|---|
-| `--cask dosbox-x` | good — a formula `dosbox-x` also exists |
-| `--cask heroic` | good |
-| `--cask amiberry` | **weakest — most likely to be wrong** |
-| `innoextract` (formula) | good; pulls `boost`, which is large |
-
-If one fails, `brew search <name>` for the real name, fix the script, commit and
-push to the PR branch. Don't paper over it locally — the script is a
-deliverable.
-
-The script also resolves `GAMES_DIR` to its volume and checks the filesystem.
-On Sisu it should print `/Volumes/Sisu is APFS`. If it misreports, that check
-is new code and unverified — fix it.
+Runs clean and is idempotent. Expected output ends with
+`✓ DOSBox-X already set to noprompt` and `✓ created under /Volumes/Sisu/Games`.
+The three bugs this shook out are described above.
 
 ### 2. CrossOver
 
@@ -178,13 +207,15 @@ proven. Per-title steps are in the guide.
 
 ## Unverified / open
 
-- Nothing in `setup-mac-retro.sh` has ever run. The volume-check function is
-  brand new.
-- No game bought, installed or launched. Every per-game step in the guide is
-  researched, not tested.
+- CrossOver, the bottle, and every per-game step. Researched, not tested.
+- No game bought, installed or launched.
 - Whether a Meadowes launchd job is loaded on this machine.
 - FTL's Steam app ID.
 - Sizes in the guide are estimates, not measurements.
+- Amiberry and Heroic are installed and notarized but have not been launched.
+
+Resolved since the last handoff: the script now runs; all four Homebrew names
+are correct; the volume check works.
 
 ## Other open item (separate task)
 
