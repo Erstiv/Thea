@@ -228,6 +228,35 @@ AIR app, `ppc i386` — dead on Apple Silicon, unrunnable, keep it only as
 evidence. Save data from 2014 survives in
 `~/Library/Preferences/CreeperWorld/` (`gameData.dat`, `keyData.dat`).
 
+**Recovered and installed 20 Aug 2026.** `redownload.php` served
+`CreeperWorldInstall.exe` (22.7 MB, Inno Setup) which installs silently:
+
+```bash
+cxstart --bottle SisuGames -- CreeperWorldInstall.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+```
+
+What it installs is **Creeper World Anniversary Edition** (2016 build) — the
+modern rebuild, not the 2010 original. ⚠️ It is still an **Adobe AIR** app with
+a captive runtime (`Adobe AIR/Versions/1.0/Adobe AIR.dll`, AIR 23.0.0.257), and
+AIR under Wine is the hard case, not the easy one.
+
+**Status: starts, not confirmed rendering.** The process stays alive and the AIR
+runtime initialises — it writes `AppData/Roaming/CreeperWorld/#airversion` and,
+once launched with the correct working directory, `Local Store`. But
+instantaneous CPU sits at 0.0-0.5%, where FTL runs at ~90%. For a 2D Flash-era
+game idling on a title screen that is not damning, but it is not proof either.
+**Needs a human to look at the screen** — Wine's own windows are invisible to
+macOS screenshot APIs under native filtering.
+
+If it turns out to be blank, the things not yet tried: installing the system
+Adobe AIR runtime into the bottle rather than relying on the captive one, and
+CrossOver's own "Install unlisted application" flow, which configures overrides
+a bare `cxstart` does not.
+
+⚠️ **Debugging Wine under CrossOver: `WINEDEBUG` from the calling environment is
+ignored** — cxstart appends its own `WINEDEBUG=-all` to the process, so
+`WINEDEBUG=+err cxstart ...` silently produces nothing. That cost time.
+
 The 2010 FastSpring download links in the receipt are **dead** — they now return
 an 8 KB store page, as the email warned they would after two weeks. But
 `knucklecracker.com/creeperworld/redownload.php` is live (HTTP 200), and the
