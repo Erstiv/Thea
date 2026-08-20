@@ -124,13 +124,21 @@ Runs clean and is idempotent. Expected output ends with
 `✓ DOSBox-X already set to noprompt` and `✓ created under /Volumes/Sisu/Games`.
 The three bugs this shook out are described above.
 
-### 2. CrossOver
+### 2. CrossOver — installed, trial NOT started
 
-Not installed by the script (it's paid). Take the **14-day trial**:
+`crossover` 26.3.0 is installed (notarized, CodeWeavers Developer ID) and the
+script now reports `✓ CrossOver present`.
 
-```bash
-brew install --cask crossover
+Bottles are already pointed at the external drive, so nothing large lands on the
+19 GB boot disk:
+
 ```
+~/Library/Application Support/CrossOver/Bottles -> /Volumes/Sisu/Games/crossover-bottles
+```
+
+**Elliot has to do the next bit** — launching CrossOver and starting the 14-day
+trial needs an email address and a registration form, which is his to fill in,
+not an agent's.
 
 Create **one** bottle, Windows 10, named `Retro`, with **D3DMetal enabled**.
 Every Windows game goes in it. Free alternative if the user prefers:
