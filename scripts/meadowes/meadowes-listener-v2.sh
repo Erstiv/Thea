@@ -91,9 +91,37 @@ $(cat "$DIR/AUTHORIZATION.md")
 
 $MODE_LINE"
 
+# Phase 2: identify this unattended process to the broker via headers so it can
+# be told apart from an attended session sharing the same bearer. We are always
+# attended=0 (a loop, never the human), with a stable per-process instance id.
+# The broker's presence-lease then makes us stand down whenever an attended
+# session for this agent is live. Derive a header-injected temp config from the
+# base MCP config (which carries the bearer); fall back cleanly if unset.
+INSTANCE_ID="${AGENT}-listener-$(hostname -s | tr '[:upper:]' '[:lower:]')-$$"
+LEASE_CONFIG=""
+if [ -n "$MCP_CONFIG" ]; then
+  LEASE_CONFIG="$(mktemp -t meadowes-lease.XXXXXX.json)"
+  python3 - "$MCP_CONFIG" "$LEASE_CONFIG" "$INSTANCE_ID" <<'PYEOF'
+import json, sys
+base, out, inst = sys.argv[1], sys.argv[2], sys.argv[3]
+cfg = json.load(open(base))
+for srv in cfg.get("mcpServers", {}).values():
+    h = srv.setdefault("headers", {})
+    h["X-Meadowes-Instance"] = inst
+    h["X-Meadowes-Attended"] = "0"
+json.dump(cfg, open(out, "w"))
+PYEOF
+  chmod 600 "$LEASE_CONFIG"
+  trap 'rm -f "$LEASE_CONFIG"' EXIT
+fi
+
 CLAUDE_ARGS=(-p "$POLICY" --allowedTools "${TOOLS[@]}" --max-turns "$MAX_TURNS")
 [ -n "$MODEL" ] && CLAUDE_ARGS+=(--model "$MODEL")
-[ -n "$MCP_CONFIG" ] && CLAUDE_ARGS+=(--mcp-config "$MCP_CONFIG" --strict-mcp-config)
+if [ -n "$LEASE_CONFIG" ]; then
+  CLAUDE_ARGS+=(--mcp-config "$LEASE_CONFIG" --strict-mcp-config)
+elif [ -n "$MCP_CONFIG" ]; then
+  CLAUDE_ARGS+=(--mcp-config "$MCP_CONFIG" --strict-mcp-config)
+fi
 
 echo "$(date -u +%FT%TZ) meadowes-listener-v2 starting as agent '$AGENT' (persistent; max_turns=${MAX_TURNS}, idle_exit=${IDLE_EXIT_POLLS} polls, exec=$ALLOW_EXEC)" >> "$LOG"
 

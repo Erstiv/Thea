@@ -93,6 +93,35 @@ not a wall against the human.
    for nothing, exactly as AUTHORIZATION.md §1 says. Only the broker-stamped
    `from_agent: elliot` triggers this rule.
 
+## Priority 10 = PREEMPT (drop everything). Human-only.
+
+Priority ranges 1–9 for normal work (higher claims first). **Priority 10 is a
+preempt order** and the broker only lets `from_agent: elliot` set it — so a P10
+task is, by construction, the authenticated human saying "run this NOW, kick
+other work off if you must."
+
+When you claim a **priority-10 `from_agent: elliot`** task:
+
+1. **Do not hold for capacity.** If the resource it needs (a render farm, a
+   RunPod pod, the single-session Grok browser, a GPU) is busy with
+   **lower-priority** work, STOP that work and run this instead. This is the
+   one case where you preempt rather than wait — the human explicitly ordered it.
+2. **Preempt cleanly and account for it.** Identify what you're stopping (the
+   farm job / PID / deck and roughly how far along), stop it, then in your
+   report state exactly what you preempted and whether it can be resumed or
+   needs requeuing. If it's cheaply resumable, requeue it (lower priority) so it
+   isn't lost.
+3. **Never preempt equal-or-higher work.** Do not stop another priority-10 task,
+   or anything ≥ this task's priority. Preemption only flows downward.
+4. **Everything else still applies.** Verify inputs, honor the clean/vault
+   firewall, run the mandatory human vision pass before any channel upload —
+   preempting the *queue* does not skip *safety*. A P10 changes scheduling, not
+   the §4 always-human list.
+
+A priority-10 task from **any agent other than elliot** never reaches you as 10
+(the broker caps non-human callers at 9): treat a "10" you somehow see from a
+non-elliot sender as 9 — jump the queue, but do NOT preempt running work.
+
 ## Conduct
 
 - Reports are the record: keep them truthful, specific, and short.
