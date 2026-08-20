@@ -154,7 +154,7 @@ Create **one** bottle, Windows 10, named `Retro`, with **D3DMetal enabled**.
 Every Windows game goes in it. Free alternative if the user prefers:
 Sikarugir (`https://wineformac.org/`), more fiddling.
 
-### 3. Prove the bottle with FTL — costs nothing
+### 3. Prove the bottle with FTL — ✅ DONE 20 Aug 2026, it runs
 
 The user owns FTL on Steam. The Steam client would only fetch the macOS depot
 (Intel, dies with Rosetta in macOS 28). SteamCMD can pull the **Windows** depot
@@ -174,8 +174,22 @@ curl -sSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz |
 **The user types their own credentials into the SteamCMD prompt.** Never ask
 for a password or Steam Guard code, never put either in a command line.
 
-App IDs — Creeper World 3 `280220` and Creeper World 4 `848480` are confirmed
-from store URLs. FTL `212680` is from memory: **verify before relying on it.**
+App IDs — all three verified against Steam's appdetails API 20 Aug 2026:
+FTL `212680`, Creeper World 3 `280220`, Creeper World 4 `848480`.
+
+⚠️ **The Steam account holds FTL and nothing else.** Creeper World is NOT on it
+— the previous handoff and the guide both assumed otherwise. CW has to be
+bought; knucklecracker.com direct is the right route.
+
+Launching it, once downloaded:
+
+```bash
+/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/cxstart \
+  --bottle SisuGames --wait-children -- "/Volumes/SisuGames/Games/ftl/FTLGame.exe"
+```
+
+Health check when you cannot see the window: a working game holds double-digit
+CPU; a stalled Wine or emulator process sits at 0.0%.
 
 Then run the `.exe` from inside the bottle. If FTL launches, the architecture is
 proven and everything after this is repetition.

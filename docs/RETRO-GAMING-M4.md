@@ -291,9 +291,13 @@ Rosetta. There is no upside to the Mac build except five minutes saved.
 
 ## Getting Steam-purchased games out of Steam
 
-You already own FTL and Creeper World on Steam. Both are DRM-free builds — the
-Steam client is a download mechanism for them, not a runtime requirement. You do
-not have to rebuy them, and you do not have to keep Steam installed.
+**Checked 20 Aug 2026: the Steam account (`erstiv`) holds FTL and nothing else.**
+Creeper World is *not* on it — that assumption was wrong. FTL was bought
+4 Nov 2015 and is a DRM-free build, so the Steam client is a download mechanism
+for it, not a runtime requirement: you do not have to rebuy it and you do not
+have to keep Steam installed. Creeper World has to be bought, and
+knucklecracker.com direct is the right place — DRM-free, no launcher, and the
+money reaches the one developer.
 
 **SteamCMD, once, from the terminal** — no client, no store, no overlay. It can
 pull the *Windows* depots onto your Mac, which is what you want for the bottle:
@@ -310,7 +314,8 @@ curl -sSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz |
   +quit
 ```
 
-App IDs: FTL 212680, Creeper World 3 280220, Creeper World 4 848480.
+App IDs, all three verified against Steam's appdetails API on 20 Aug 2026:
+FTL 212680, Creeper World 3 280220, Creeper World 4 848480.
 Copy the resulting folder into the bottle's drive and run the `.exe` directly.
 Steam never launches again.
 
@@ -424,6 +429,43 @@ diskutil info /Volumes/YourDrive | grep -i "file system"
 
 Everything except SimCity 4 modding is bounded. Total lands around 8-10 GB.
 
+
+## FTL runs in the bottle — proven 20 August 2026
+
+The whole plan rested on one untested claim: that a Windows game in a CrossOver
+bottle actually works on this hardware. It does.
+
+SteamCMD pulled the **Windows** depot (286 MB) with no Steam client involved:
+
+```bash
+cd ~/steamcmd && ./steamcmd.sh +@sSteamCmdForcePlatformType windows \
+  +force_install_dir "/Volumes/SisuGames/Games/ftl" \
+  +login <account> +app_update 212680 validate +quit
+```
+
+What arrived is a genuine `PE32 executable (GUI) Intel 80386, for MS Windows`
+plus its DLLs — not the Mac build. Launching it straight from the bottle:
+
+```bash
+/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/cxstart \
+  --bottle SisuGames --wait-children -- "/Volumes/SisuGames/Games/ftl/FTLGame.exe"
+```
+
+`FTL.log` reaches `Running Game!` and the process holds 18-25% CPU, which is the
+tell that it is really rendering. **A stalled Wine or emulator process sits at
+0.0% CPU** — that is how the DOSBox-X hang above was distinguished from a
+working one, and it is the cheapest health check there is when you cannot see
+the window.
+
+Bottle settings as used: Windows 10 64-bit template, Graphics **Auto** (not
+forced to D3DMetal). Auto selects a backend per title, which suits a library of
+1998-2020 games better than one forced setting; override per game only if
+something misbehaves.
+
+Everything downstream — Creeper World, SimCity 4, Populous: The Beginning — is
+now repetition of a proven path rather than a bet.
+
+---
 
 ## Verified on hardware — 20 August 2026
 
