@@ -41,6 +41,49 @@ case "$SW_VERS" in
         ;;
 esac
 
+# --- games volume ------------------------------------------------------------
+
+# GAMES_DIR often points at an external drive. Wine bottles and app bundles need
+# POSIX permissions and symlinks, so exFAT/FAT/NTFS will fail in confusing ways.
+check_games_volume() {
+    local dir="$1" probe="$dir" mount fs
+
+    command -v diskutil >/dev/null 2>&1 || return 0
+
+    # walk up to the nearest ancestor that exists yet
+    while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do
+        probe="$(dirname "$probe")"
+    done
+
+    mount="$(df -P "$probe" 2>/dev/null | awk 'NR==2 {for (i=6; i<=NF; i++) printf "%s%s", $i, (i<NF ? " " : "")}')"
+    [ -n "$mount" ] || return 0
+
+    fs="$(diskutil info "$mount" 2>/dev/null \
+          | awk -F: '/File System Personality/ {sub(/^[ \t]+/, "", $2); print $2}')"
+    [ -n "$fs" ] || return 0
+
+    case "$fs" in
+        *ExFAT*|*exFAT*|*FAT32*|*MS-DOS*|*NTFS*)
+            warn "$mount is $fs — games will not run reliably from it."
+            info "Wine bottles need POSIX permissions and symlinks; exFAT/FAT/NTFS"
+            info "have neither. Reformat as APFS, or pick a different volume."
+            ;;
+        *Case-sensitive*)
+            warn "$mount is $fs."
+            info "Some old Windows installers assume case-insensitive paths and"
+            info "will fail here. Plain APFS is the safer choice."
+            ;;
+        *)
+            ok "$mount is $fs"
+            ;;
+    esac
+}
+
+say "Games volume"
+check_games_volume "$GAMES_DIR"
+info "games dir: $GAMES_DIR"
+info "override with: GAMES_DIR=/Volumes/YourDrive/Games $0"
+
 # --- homebrew ----------------------------------------------------------------
 
 say "Homebrew"

@@ -341,6 +341,66 @@ Everything except CrossOver goes on sale regularly; the GOG classics hit $1–2.
 
 ---
 
+---
+
+## Putting it on an external drive
+
+An internal drive with under ~30 GB free is not enough headroom for this plus
+macOS. The good news is that almost all the bulk moves off cleanly.
+
+### What moves
+
+| | Where |
+|---|---|
+| Game data | `GAMES_DIR=/Volumes/YourDrive/Games ./scripts/retro/setup-mac-retro.sh` |
+| CrossOver bottles | point the bottle directory at the drive, or symlink `~/Library/Application Support/CrossOver/Bottles` |
+| Heroic downloads | configurable default install path in its settings |
+| DOS / Amiga data | anywhere — `dosbox-x -c "mount c /Volumes/YourDrive/Games/populous2"` |
+
+The bottle plus SimCity 4 plus Multiverse is most of the total, so relocating
+those three covers the problem.
+
+### What stays internal (~2 GB)
+
+Homebrew on Apple Silicon expects `/opt/homebrew`, and casks install `.app`
+bundles into `/Applications`. Both can be fought; neither is worth it for a
+couple of gigabytes. CrossOver itself likewise. Budget ~1 GB for the toolchain
+and ~1 GB for the CrossOver app, on the boot volume.
+
+### Format the drive correctly
+
+**APFS or HFS+ — never exFAT, FAT32 or NTFS.** Wine bottles need POSIX
+permissions and symlinks; those filesystems have neither, and bottles fail in
+confusing ways rather than cleanly. `setup-mac-retro.sh` checks this and warns,
+but check yourself before you commit to a drive:
+
+```bash
+diskutil info /Volumes/YourDrive | grep -i "file system"
+```
+
+- Use **plain APFS, not APFS (Case-sensitive)** — old Windows installers assume
+  case-insensitive paths.
+- The volume must be **mounted before launching anything**. A missing drive
+  turns a bottle into dangling symlinks.
+- USB3 SSD is fine. A spinning USB drive plays but loads slowly on the bigger
+  titles. Thunderbolt/USB4 NVMe on an M4 is effectively internal speed.
+
+### Rough sizes
+
+| | |
+|---|---|
+| Toolchain (DOSBox-X, Amiberry, Heroic, innoextract) | ~0.5-1 GB |
+| CrossOver app + one Windows 10 bottle | ~2 GB |
+| Populous 1 & 2 (DOS) | a few MB |
+| Populous: The Beginning | ~500 MB |
+| SimCity 3000 | ~500 MB |
+| SimCity 4 Deluxe | ~2 GB, **but NAM and mods can pass 10 GB** |
+| Creeper World 3 / 4 | ~200 MB / ~1 GB |
+| FTL, or FTL + Multiverse | ~300 MB / ~1-2 GB |
+
+Everything except SimCity 4 modding is bounded. Total lands around 8-10 GB.
+
+
 ## Session handoff
 
 Written 20 August 2026 in a cloud session on branch
