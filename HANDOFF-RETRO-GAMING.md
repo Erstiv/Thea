@@ -240,7 +240,12 @@ modern rebuild, not the 2010 original. ⚠️ It is still an **Adobe AIR** app w
 a captive runtime (`Adobe AIR/Versions/1.0/Adobe AIR.dll`, AIR 23.0.0.257), and
 AIR under Wine is the hard case, not the easy one.
 
-**Status: starts, not confirmed rendering.** The process stays alive and the AIR
+**Status: ✅ CONFIRMED WORKING 20 Aug 2026** — window renders, audio plays.
+The low CPU reading below was a title screen idling, not a failure; recorded
+because it is exactly the reading a dead launch gives, and the two are not
+distinguishable without looking.
+
+**Original ambiguous reading:** The process stays alive and the AIR
 runtime initialises — it writes `AppData/Roaming/CreeperWorld/#airversion` and,
 once launched with the correct working directory, `Local Store`. But
 instantaneous CPU sits at 0.0-0.5%, where FTL runs at ~90%. For a 2D Flash-era
@@ -248,10 +253,15 @@ game idling on a title screen that is not damning, but it is not proof either.
 **Needs a human to look at the screen** — Wine's own windows are invisible to
 macOS screenshot APIs under native filtering.
 
-If it turns out to be blank, the things not yet tried: installing the system
-Adobe AIR runtime into the bottle rather than relying on the captive one, and
-CrossOver's own "Install unlisted application" flow, which configures overrides
-a bare `cxstart` does not.
+Not needed in the end, but if an AIR title ever does come up blank: install the
+system Adobe AIR runtime into the bottle rather than relying on the captive one,
+and try CrossOver's "Install unlisted application" flow, which configures
+overrides a bare `cxstart` does not.
+
+**Lesson for the CPU heuristic:** ~0% CPU proves a process is not *rendering
+continuously*; it does not prove failure. A 2D or Flash-era game parked on a
+menu is legitimately idle. High CPU is positive evidence; low CPU is only a
+prompt to go and look.
 
 ⚠️ **Debugging Wine under CrossOver: `WINEDEBUG` from the calling environment is
 ignored** — cxstart appends its own `WINEDEBUG=-all` to the process, so
