@@ -28,7 +28,7 @@ Amiberry native for the DOS and Amiga classics.
 | Machine | MacBook Air, Apple Silicon, user `JERS`, hostname `MacBook-Air` |
 | Login shell | `bash` (macOS nags about zsh; harmless) |
 | Boot volume | 512 GB, **~22 GB free** — tight, this drives the whole storage plan |
-| External drive | `/Volumes/Sisu`, **APFS**, case-insensitive — correct for bottles |
+| External drive | `/Volumes/SisuGames`, **APFS**, case-insensitive — correct for bottles |
 | Repo checkout | `~/Thea-repo`, on branch `claude/retro-games-apple-silicon-m4-pf7ruw` |
 | Open PR | Erstiv/Thea **#6** (draft). Push work there. |
 
@@ -62,7 +62,7 @@ installed and the script has been run, debugged and re-run clean:
 
 - `dosbox-x` 2026.08.02 (formula), `amiberry` 8.3.0, `heroic` 2.22.1,
   `innoextract` 1.9 — all arm64, all working.
-- Game tree created at `/Volumes/Sisu/Games`; Sisu confirmed APFS,
+- Game tree created at `/Volumes/SisuGames/Games`; Sisu confirmed APFS,
   case-insensitive, 1.8 TB free.
 - DOSBox-X verified actually running DOS (it wrote a file to the host from
   inside the emulator).
@@ -94,14 +94,24 @@ including `amiberry`, which had been flagged as the likely wrong one. The
 volume-check function reported `/Volumes/Sisu is APFS` correctly once bug 1 was
 fixed.
 
-### ⚠️ The boot volume is also named "Sisu"
+### The "Sisu" name collision — happened, then fixed
 
-`/Volumes/Sisu` is the external drive *right now*, and `/Volumes/Sisu 1` is a
-symlink to `/`. That is a race: whichever volume mounts first takes the plain
-name. With the external unmounted, `GAMES_DIR=/Volumes/Sisu/Games` would quietly
-create directories on the 21 GB internal disk. The script now refuses to run
-when `GAMES_DIR` is under `/Volumes` but resolves to the boot disk. Renaming one
-of the two volumes would be the real fix — Elliot's call.
+The boot volume (`disk3s1`, the macOS system volume) was **also** named `Sisu`,
+so two mounted volumes wanted `/Volumes/Sisu` and macOS handed the loser
+`/Volumes/Sisu 1`. That is a race, and it flipped mid-session on 2026-08-20:
+the external held `/Volumes/Sisu` at 11:38 and had lost it by 12:18, at which
+point `/Volumes/Sisu` was a symlink to `/` and anything written through that
+path went to the 21 GB boot disk. It caught the CrossOver bottles symlink,
+which silently started resolving to a nonexistent `/Games`.
+
+**Resolved:** Elliot renamed the external to `SisuGames`
+(`diskutil rename /dev/disk7s1 SisuGames`), which remounted immediately at
+`/Volumes/SisuGames`. The boot volume keeps the name `Sisu`, and
+`/Volumes/Sisu` is now just its symlink to `/` with nothing contending for it.
+
+**Everything is `/Volumes/SisuGames/Games` from here on.** The guard in the
+script stays — it is what would have caught this before a 2 GB bottle landed on
+the boot disk.
 
 ---
 
@@ -113,15 +123,15 @@ Work through these in order. Stop and report at the first failure.
 
 ```bash
 cd ~/Thea-repo && git pull
-df -h /Volumes/Sisu
-GAMES_DIR=/Volumes/Sisu/Games ./scripts/retro/setup-mac-retro.sh
+df -h /Volumes/SisuGames
+GAMES_DIR=/Volumes/SisuGames/Games ./scripts/retro/setup-mac-retro.sh
 ```
 
 Installs DOSBox-X, Amiberry, Heroic, innoextract via Homebrew; creates the game
 tree on Sisu; prints next steps. Idempotent — safe to re-run.
 
 Runs clean and is idempotent. Expected output ends with
-`✓ DOSBox-X already set to noprompt` and `✓ created under /Volumes/Sisu/Games`.
+`✓ DOSBox-X already set to noprompt` and `✓ created under /Volumes/SisuGames/Games`.
 The three bugs this shook out are described above.
 
 ### 2. CrossOver — installed, trial NOT started
@@ -133,7 +143,7 @@ Bottles are already pointed at the external drive, so nothing large lands on the
 19 GB boot disk:
 
 ```
-~/Library/Application Support/CrossOver/Bottles -> /Volumes/Sisu/Games/crossover-bottles
+~/Library/Application Support/CrossOver/Bottles -> /Volumes/SisuGames/Games/crossover-bottles
 ```
 
 **Elliot has to do the next bit** — launching CrossOver and starting the 14-day
@@ -156,7 +166,7 @@ curl -sSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz |
 
 ./steamcmd.sh +@sSteamCmdForcePlatformType windows \
   +login <account> \
-  +force_install_dir /Volumes/Sisu/Games/ftl \
+  +force_install_dir /Volumes/SisuGames/Games/ftl \
   +app_update 212680 validate \
   +quit
 ```

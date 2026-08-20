@@ -454,18 +454,21 @@ one; it is correct, and installs 8.3.0.
    it produces no error at all: the process starts, blocks in AppKit, and never
    draws. `sample <pid>` is what identifies it.
 
-**A same-name volume trap on this machine.** The boot volume is *also* named
-`Sisu`, so `/Volumes/Sisu` is whichever of the two mounted first and the loser
-appears as `/Volumes/Sisu 1` (currently a symlink to `/`). If the external is
-not mounted, `GAMES_DIR=/Volumes/Sisu/Games` silently creates directories on the
-21 GB internal disk. The script now refuses to run when `GAMES_DIR` is under
-`/Volumes` but resolves to the boot disk.
+**A same-name volume trap, observed live.** The boot volume was *also* named
+`Sisu`, so both volumes wanted `/Volumes/Sisu` and the loser got
+`/Volumes/Sisu 1`. That race flipped within a single session: the external held
+the plain name at 11:38 and had lost it by 12:18, after which `/Volumes/Sisu`
+was a symlink to `/` and writes through it went to the boot disk. Fixed by
+renaming the external — `diskutil rename /dev/disk7s1 SisuGames` — which
+remounts immediately, no unplugging. The script also refuses to run when
+`GAMES_DIR` sits under `/Volumes` but resolves to the boot disk; that guard is
+worth keeping on any machine with an external games drive.
 
 **Confirming DOSBox-X really works without a screen:** have DOS write a file the
 host can see. It appears in about three seconds.
 
 ```bash
-dosbox-x -c "mount c /Volumes/Sisu/Games/dos" -c "c:" -c "echo OK > PROOF.TXT"
+dosbox-x -c "mount c /Volumes/SisuGames/Games/dos" -c "c:" -c "echo OK > PROOF.TXT"
 ```
 
 **Still untested:** CrossOver, the bottle, and every game. No purchase has been
