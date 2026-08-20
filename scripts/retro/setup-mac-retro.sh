@@ -1,0 +1,147 @@
+#!/bin/bash
+# Project Thea — retro gaming toolchain for Apple Silicon (M4)
+# Installs everything needed to play Populous, SimCity, Creeper World and FTL
+# on a Mac without Steam. See docs/RETRO-GAMING-M4.md for the why.
+#
+# Safe to re-run: everything is checked before it is installed.
+
+set -uo pipefail
+
+CROSSOVER_BOTTLE="${CROSSOVER_BOTTLE:-Retro}"
+GAMES_DIR="${GAMES_DIR:-$HOME/Games}"
+
+say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
+info() { printf '    %s\n' "$*"; }
+
+say "=== Project Thea — Retro Gaming Setup (Apple Silicon) ==="
+
+# --- sanity ------------------------------------------------------------------
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "This script is for macOS only." >&2
+    exit 1
+fi
+
+ARCH="$(uname -m)"
+if [ "$ARCH" != "arm64" ]; then
+    warn "Detected $ARCH, not arm64. This script targets Apple Silicon."
+    info "It will still work, but the native-ARM advice below won't apply."
+fi
+
+say "macOS version"
+SW_VERS="$(sw_vers -productVersion)"
+ok "macOS $SW_VERS"
+case "$SW_VERS" in
+    2[89].*|3[0-9].*)
+        warn "Rosetta 2 general support ended in macOS 28."
+        info "Intel-only game builds (old Mac ports) will not launch."
+        info "Use the CrossOver bottle for everything — see the guide."
+        ;;
+esac
+
+# --- homebrew ----------------------------------------------------------------
+
+say "Homebrew"
+if ! command -v brew >/dev/null 2>&1; then
+    warn "Homebrew not found. Installing..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
+        echo "Homebrew install failed. Install it manually and re-run." >&2
+        exit 1
+    }
+    # Apple Silicon default prefix
+    [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+else
+    ok "Homebrew present ($(brew --version | head -1))"
+fi
+
+install_formula() {
+    local name="$1" why="$2"
+    if brew list --formula "$name" >/dev/null 2>&1; then
+        ok "$name already installed"
+    else
+        info "installing $name — $why"
+        brew install "$name" >/dev/null 2>&1 && ok "$name installed" \
+            || warn "$name failed to install (skipping)"
+    fi
+}
+
+install_cask() {
+    local name="$1" why="$2"
+    if brew list --cask "$name" >/dev/null 2>&1; then
+        ok "$name already installed"
+    else
+        info "installing $name — $why"
+        brew install --cask "$name" >/dev/null 2>&1 && ok "$name installed" \
+            || warn "$name failed to install (check: brew info --cask $name)"
+    fi
+}
+
+# --- emulators & tools -------------------------------------------------------
+
+say "Native emulators (no Rosetta, no translation layer)"
+install_cask    dosbox-x   "DOS games — Populous 1/2, SimCity 2000. Native arm64."
+install_cask    amiberry   "Amiga — the definitive Populous II. ARM64 JIT since v8.0."
+
+say "Launchers and unpacking tools"
+install_cask    heroic     "native ARM launcher for GOG + Epic libraries, no Steam"
+install_formula innoextract "unpack GOG Windows installers without needing Windows"
+
+say "Windows compatibility layer"
+if [ -d "/Applications/CrossOver.app" ]; then
+    ok "CrossOver present"
+else
+    warn "CrossOver not installed."
+    info "It is the recommended (paid, ~\$74, 14-day trial) option:"
+    info "    brew install --cask crossover"
+    info "Free alternative — Sikarugir (the maintained Kegworks/Wineskin fork):"
+    info "    https://wineformac.org/"
+    info "CrossOver 27 (early 2027) goes Apple-Silicon-native and drops Rosetta,"
+    info "which is why the bottle route outlives the old Intel Mac ports."
+fi
+
+# --- layout ------------------------------------------------------------------
+
+say "Game directories"
+for d in populous populous2 populous-tb simcity4 creeperworld ftl amiga/roms dos; do
+    mkdir -p "$GAMES_DIR/$d"
+done
+ok "created under $GAMES_DIR"
+
+# --- next steps --------------------------------------------------------------
+
+say "Next steps (manual — these need your store logins)"
+cat <<'NEXT'
+  1. CrossOver: create ONE Windows 10 bottle named "Retro", enable D3DMetal.
+     Everything Windows goes in it: Populous: The Beginning, SimCity 4 (GOG),
+     Creeper World 3/4, FTL (Windows build, for Hyperspace + Multiverse).
+
+  2. GOG (DRM-free, no launcher required) — buy and grab offline installers:
+       Populous / Populous II          → DOS builds, use DOSBox-X, not GOG's
+       Populous: The Beginning         → bottle, then patch 1.03 + Enhanced
+                                          Edition from popre.net
+       SimCity 4 Deluxe                → bottle (full Windows mod stack)
+       FTL: Advanced Edition           → bottle (Windows build)
+
+  3. Knuckle Cracker (knucklecracker.com/common/buy.php) — Creeper World,
+     sold direct, DRM-free, no launcher. CW3 is the series peak, CW4 the most
+     polished. Both go in the bottle.
+
+  4. DOS classics:
+       innoextract setup_populous_*.exe -d ~/Games/populous2
+       dosbox-x -c "mount c ~/Games/populous2/app" -c "c:" -c "POPULOUS.EXE"
+
+  5. Amiga (optional, best Populous II): Amiberry needs Kickstart ROMs.
+     Buy Amiga Forever (~$10) and drop the ROMs in ~/Games/amiga/roms.
+
+  6. Already own FTL / Creeper World on Steam? Both are DRM-free builds — you
+     can pull the Windows depots with SteamCMD and never launch the client:
+       ./steamcmd.sh +@sSteamCmdForcePlatformType windows +login <acct> \
+         +force_install_dir ~/Games/ftl +app_update 212680 validate +quit
+     App IDs: FTL 212680, Creeper World 3 280220, Creeper World 4 848480.
+
+  Full reasoning, version picks and sources: docs/RETRO-GAMING-M4.md
+NEXT
+
+say "Done."
