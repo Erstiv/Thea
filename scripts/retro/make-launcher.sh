@@ -1,0 +1,158 @@
+#!/bin/bash
+# Project Thea — build a double-clickable launcher for a game in a CrossOver
+# bottle, or for a DOS game under DOSBox-X.
+#
+#   make-launcher.sh bottle  "FTL"      "/Volumes/SisuGames/Games/ftl/FTLGame.exe"
+#   make-launcher.sh dosbox  "Populous" "/Volumes/SisuGames/Games/populous2/app" POPULOUS.EXE
+#
+# The .app lands in /Applications — NOT ~/Applications, which the Finder sidebar
+# does not point at, so launchers put there are effectively invisible.
+#
+# The real command lives in a shell script inside the bundle rather than being
+# embedded in the AppleScript. That keeps paths with spaces out of AppleScript
+# string literals (where a backslash escape is a syntax error, not a space), and
+# it is the only sane place to put `nohup`: an applet's `do shell script ... &`
+# child dies when the applet quits, which silently breaks the launcher.
+
+set -uo pipefail
+
+KIND="${1:-}"; NAME="${2:-}"; TARGET="${3:-}"; DOS_EXE="${4:-}"
+CX_BOTTLE="${CX_BOTTLE:-SisuGames}"
+OUT_DIR="${OUT_DIR:-/Applications}"
+CXSTART="/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/cxstart"
+
+usage() {
+    cat >&2 <<USAGE
+usage: $0 bottle <Name> <path/to/Game.exe>
+       $0 dosbox <Name> <path/to/dos/dir> <PROGRAM.EXE>
+env:   CX_BOTTLE (default SisuGames)   OUT_DIR (default /Applications)
+USAGE
+    exit 2
+}
+
+[ -n "$KIND" ] && [ -n "$NAME" ] && [ -n "$TARGET" ] || usage
+
+q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+case "$KIND" in
+    bottle)
+        [ -x "$CXSTART" ] || { echo "CrossOver not found at $CXSTART" >&2; exit 1; }
+        # --workdir is NOT optional. Many Windows games resolve their data
+        # directory relative to the working directory, and cxstart does not
+        # default to the executable's own folder. Populous: The Beginning
+        # dies on a null-pointer read at startup without it — a crash that
+        # looks like a Wine incompatibility and is not one.
+        # NO_WORKDIR=1 opts out. Adobe AIR titles break WITH a working
+        # directory set (Creeper World renders a blank window and never
+        # loads), while Populous: The Beginning crashes WITHOUT one. There is
+        # no single right answer, so it is a per-game switch.
+        if [ "${NO_WORKDIR:-0}" = "1" ]; then
+            RUN="$(q "$CXSTART") --bottle $(q "$CX_BOTTLE") -- $(q "$TARGET")"
+        else
+            RUN="$(q "$CXSTART") --bottle $(q "$CX_BOTTLE") --workdir $(q "$(dirname "$TARGET")") -- $(q "$TARGET")"
+        fi
+        ;;
+    dosbox)
+        [ -n "$DOS_EXE" ] || usage
+        DBX="$(command -v dosbox-x)" || { echo "dosbox-x not on PATH" >&2; exit 1; }
+        # -nopromptfolder belt-and-braces: the user config sets noprompt too, but
+        # a fresh config would otherwise hang on an invisible folder panel.
+        # CYCLES sets the emulated CPU speed. "auto" on an M-series Mac runs a
+        # 1982 game hundreds of times faster than the 4.77 MHz 8088 it was
+        # written for: monsters act faster than you can react and keystrokes
+        # get swallowed. Roughly period-correct values:
+        #   8088/1982-85 = 315    286/1989 = 3000
+        #   386/1991     = 5000   486 DOS4GW/1993 = 20000
+        CYC=""
+        [ -n "${CYCLES:-}" ] && CYC="-set $(q "cpu cycles=$CYCLES") "
+        RUN="$(q "$DBX") -nopromptfolder ${CYC}-c $(q "mount c $TARGET") -c 'c:' -c $(q "$DOS_EXE")"
+        ;;
+    *) usage ;;
+esac
+
+APP="$OUT_DIR/$NAME.app"
+mkdir -p "$OUT_DIR"
+rm -rf "$APP"
+
+VOLUME="$(printf '%s' "$TARGET" | awk -F/ '/^\/Volumes\//{print "/Volumes/" $3}')"
+
+# A plain shell-script bundle — NOT an AppleScript applet.
+#
+# osacompile applets write state inside their own .app. For a bundle living in
+# /Applications that counts as modifying an application, so macOS raises an
+# "App Management" prompt on every launch. Granting that permission would let
+# the launcher update or delete other apps, which is absurd for a game icon.
+# A bundle whose CFBundleExecutable is just a shell script never writes to
+# itself and never triggers the prompt.
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>$NAME</string>
+	<key>CFBundleDisplayName</key><string>$NAME</string>
+	<key>CFBundleExecutable</key><string>launch</string>
+	<key>CFBundleIdentifier</key><string>com.thea.retro.$(printf '%s' "$NAME" | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]')</string>
+	<key>CFBundleIconFile</key><string>icon</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>LSMinimumSystemVersion</key><string>11.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+
+cat > "$APP/Contents/MacOS/launch" <<LAUNCH
+#!/bin/bash
+# generated by make-launcher.sh — edit the generator, not this file
+# arguments passed to osascript as argv, so there is no quoting to get wrong
+alert() {
+    /usr/bin/osascript -e 'on run argv
+	display alert (item 1 of argv) message (item 2 of argv) as critical
+end run' "\$1" "\$2" >/dev/null 2>&1
+}
+VOLUME=$(q "$VOLUME")
+TARGET=$(q "$TARGET")
+if [ -n "\$VOLUME" ] && [ ! -d "\$VOLUME" ]; then
+    alert "The games drive isn't connected" "$NAME lives on \$VOLUME. Plug the drive in and try again."
+    exit 1
+fi
+if [ ! -e "\$TARGET" ]; then
+    alert "$NAME isn't installed yet" "Nothing found at \$TARGET"
+    exit 1
+fi
+# nohup + full detach: the game must outlive this launcher process
+nohup $RUN >/dev/null 2>&1 &
+disown 2>/dev/null
+exit 0
+LAUNCH
+chmod +x "$APP/Contents/MacOS/launch"
+
+# Give it its own icon if we can pull one out of the Windows executable.
+if [ "$KIND" = "bottle" ] && command -v wrestool >/dev/null 2>&1 && command -v icotool >/dev/null 2>&1; then
+    ID="$(mktemp -d)"
+    if wrestool -x -t 14 "$TARGET" -o "$ID" >/dev/null 2>&1 \
+       && icotool -x -o "$ID" "$ID"/*.ico >/dev/null 2>&1; then
+        BIG="$(ls -S "$ID"/*.png 2>/dev/null | head -1)"
+        if [ -n "$BIG" ]; then
+            ICONSET="$ID/icon.iconset"; mkdir -p "$ICONSET"
+            for sz in 16 32 128 256 512; do
+                sips -z $sz $sz "$BIG" --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null 2>&1
+            done
+            iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/icon.icns" 2>/dev/null \
+                && echo "  icon extracted from $(basename "$TARGET")"
+        fi
+    fi
+    rm -rf "$ID"
+fi
+
+# Ad-hoc sign. An unsigned bundle launches fine via `open` from a terminal but
+# Finder/LaunchServices can refuse it silently on Apple Silicon — which reads
+# as "the icon does nothing".
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
+    && echo "  signed (ad-hoc)" || echo "  ! could not sign $APP"
+
+touch "$APP"
+echo "built: $APP"
