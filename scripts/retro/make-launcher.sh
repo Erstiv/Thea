@@ -42,7 +42,15 @@ case "$KIND" in
         # default to the executable's own folder. Populous: The Beginning
         # dies on a null-pointer read at startup without it — a crash that
         # looks like a Wine incompatibility and is not one.
-        RUN="$(q "$CXSTART") --bottle $(q "$CX_BOTTLE") --workdir $(q "$(dirname "$TARGET")") -- $(q "$TARGET")"
+        # NO_WORKDIR=1 opts out. Adobe AIR titles break WITH a working
+        # directory set (Creeper World renders a blank window and never
+        # loads), while Populous: The Beginning crashes WITHOUT one. There is
+        # no single right answer, so it is a per-game switch.
+        if [ "${NO_WORKDIR:-0}" = "1" ]; then
+            RUN="$(q "$CXSTART") --bottle $(q "$CX_BOTTLE") -- $(q "$TARGET")"
+        else
+            RUN="$(q "$CXSTART") --bottle $(q "$CX_BOTTLE") --workdir $(q "$(dirname "$TARGET")") -- $(q "$TARGET")"
+        fi
         ;;
     dosbox)
         [ -n "$DOS_EXE" ] || usage
