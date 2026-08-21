@@ -5,7 +5,8 @@
 #   make-launcher.sh bottle  "FTL"      "/Volumes/SisuGames/Games/ftl/FTLGame.exe"
 #   make-launcher.sh dosbox  "Populous" "/Volumes/SisuGames/Games/populous2/app" POPULOUS.EXE
 #
-# The .app lands in ~/Applications. Drag it to the Dock like any other app.
+# The .app lands in /Applications — NOT ~/Applications, which the Finder sidebar
+# does not point at, so launchers put there are effectively invisible.
 #
 # The real command lives in a shell script inside the bundle rather than being
 # embedded in the AppleScript. That keeps paths with spaces out of AppleScript
@@ -17,14 +18,14 @@ set -uo pipefail
 
 KIND="${1:-}"; NAME="${2:-}"; TARGET="${3:-}"; DOS_EXE="${4:-}"
 CX_BOTTLE="${CX_BOTTLE:-SisuGames}"
-OUT_DIR="${OUT_DIR:-$HOME/Applications}"
+OUT_DIR="${OUT_DIR:-/Applications}"
 CXSTART="/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/cxstart"
 
 usage() {
     cat >&2 <<USAGE
 usage: $0 bottle <Name> <path/to/Game.exe>
        $0 dosbox <Name> <path/to/dos/dir> <PROGRAM.EXE>
-env:   CX_BOTTLE (default SisuGames)   OUT_DIR (default ~/Applications)
+env:   CX_BOTTLE (default SisuGames)   OUT_DIR (default /Applications)
 USAGE
     exit 2
 }
