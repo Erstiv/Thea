@@ -57,7 +57,15 @@ case "$KIND" in
         DBX="$(command -v dosbox-x)" || { echo "dosbox-x not on PATH" >&2; exit 1; }
         # -nopromptfolder belt-and-braces: the user config sets noprompt too, but
         # a fresh config would otherwise hang on an invisible folder panel.
-        RUN="$(q "$DBX") -nopromptfolder -c $(q "mount c $TARGET") -c 'c:' -c $(q "$DOS_EXE")"
+        # CYCLES sets the emulated CPU speed. "auto" on an M-series Mac runs a
+        # 1982 game hundreds of times faster than the 4.77 MHz 8088 it was
+        # written for: monsters act faster than you can react and keystrokes
+        # get swallowed. Roughly period-correct values:
+        #   8088/1982-85 = 315    286/1989 = 3000
+        #   386/1991     = 5000   486 DOS4GW/1993 = 20000
+        CYC=""
+        [ -n "${CYCLES:-}" ] && CYC="-set $(q "cpu cycles=$CYCLES") "
+        RUN="$(q "$DBX") -nopromptfolder ${CYC}-c $(q "mount c $TARGET") -c 'c:' -c $(q "$DOS_EXE")"
         ;;
     *) usage ;;
 esac
