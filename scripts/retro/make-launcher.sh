@@ -92,7 +92,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleShortVersionString</key><string>1.0</string>
 	<key>LSMinimumSystemVersion</key><string>11.0</string>
 	<key>NSHighResolutionCapable</key><true/>
-	<key>LSUIElement</key><true/>
 </dict>
 </plist>
 PLIST
@@ -140,6 +139,12 @@ if [ "$KIND" = "bottle" ] && command -v wrestool >/dev/null 2>&1 && command -v i
     fi
     rm -rf "$ID"
 fi
+
+# Ad-hoc sign. An unsigned bundle launches fine via `open` from a terminal but
+# Finder/LaunchServices can refuse it silently on Apple Silicon — which reads
+# as "the icon does nothing".
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 \
+    && echo "  signed (ad-hoc)" || echo "  ! could not sign $APP"
 
 touch "$APP"
 echo "built: $APP"
